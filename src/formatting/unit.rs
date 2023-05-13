@@ -30,7 +30,7 @@ impl fmt::Display for Unit {
             Self::Bytes => "B",
             Self::Bits => "b",
             Self::Percents => "%",
-            Self::Degrees => "°",
+            Self::Degrees => "°C",
             Self::Seconds => "s",
             Self::Watts => "W",
             Self::Hertz => "Hz",
