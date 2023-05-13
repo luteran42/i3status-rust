@@ -84,7 +84,13 @@ features = [
 ]
 
 [profile.release]
-lto = "thin"
+lto = "fat"
+opt-level = 3
+codegen-units = 1   # Reduce number of codegen units to increase optimizations
+panic = 'abort'     # Abort on panic
+debug = 0           # no debug
+strip = true        # Strip symbols from binary*
+incremental = true  # ccache basicly
 
 [profile.release-debug-info]
 inherits = "release"
