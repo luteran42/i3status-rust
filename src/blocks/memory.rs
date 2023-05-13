@@ -147,6 +147,16 @@ pub async fn run(config: &Config, api: &CommonApi) -> Result<()> {
         let swap_cached = mem_state.swap_cached as f64 * 1024.;
         let swap_used = swap_total - swap_free - swap_cached;
 
+        // Zswap usage
+        let zswap_compressed = mem_state.zswap_compressed as f64 * 1024.;
+        let zswap_decompressed = mem_state.zswap_decompressed as f64 * 1024.;
+
+        let zswap_comp_ratio = if zswap_compressed == 0.0 {
+            0.0
+        } else {
+            zswap_decompressed / zswap_compressed
+        };
+
         let mut widget = Widget::new().with_format(format.clone());
         widget.set_values(map! {
             "icon" => Value::icon("memory_mem"),
@@ -168,7 +178,11 @@ pub async fn run(config: &Config, api: &CommonApi) -> Result<()> {
             "buffers" => Value::bytes(buffers),
             "buffers_percent" => Value::percents(buffers / mem_total * 100.),
             "cached" => Value::bytes(cached),
-            "cached_percent" => Value::percents(cached / mem_total * 100.)
+            "cached_percent" => Value::percents(cached / mem_total * 100.),
+            "zswap_compressed" => Value::bytes(zswap_compressed),
+            "zswap_decompressed" => Value::bytes(zswap_decompressed),
+            "zswap_decompressed_percents" => Value::percents(zswap_decompressed / (swap_used + swap_cached) * 100.),
+            "zswap_comp_ratio" => Value::number(zswap_comp_ratio)
         });
 
         let mem_state = match mem_used / mem_total * 100. {
@@ -223,6 +237,8 @@ struct Memstate {
     swap_total: u64,
     swap_free: u64,
     swap_cached: u64,
+    zswap_compressed: u64,
+    zswap_decompressed: u64,
     zfs_arc_cache: u64,
     zfs_arc_min: u64,
 }
@@ -271,6 +287,8 @@ impl Memstate {
                 "SwapTotal:" => mem_state.swap_total = val,
                 "SwapFree:" => mem_state.swap_free = val,
                 "SwapCached:" => mem_state.swap_cached = val,
+                "Zswap:" => mem_state.zswap_compressed = val,
+                "Zswapped:" => mem_state.zswap_decompressed = val,
                 _ => (),
             }
 
