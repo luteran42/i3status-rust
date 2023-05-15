@@ -34,6 +34,10 @@
 //! `swap_free_percents`      | as above but as a percentage of total memory                                    | Number | Percents
 //! `swap_used`               | Swap used                                                                       | Number | Bytes
 //! `swap_used_percents`      | as above but as a percentage of total memory                                    | Number | Percents
+//! `zswap_compressed`        | Compressed zswap memory usage                                                   | Number | Bytes
+//! `zswap_decompressed`      | Decompressed zswap memory usage                                                 | Number | Bytes
+//! `zswap_decompressed_percents` | as above but as a percentage of total zswap memory                          | Number | Percents
+//! 'zswap_comp_ratio'        | Ratio of the decompressed/compressed zswap memory                               | Number | -
 //!
 //! Action          | Description                               | Default button
 //! ----------------|-------------------------------------------|---------------
