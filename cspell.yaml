@@ -178,3 +178,6 @@ words:
   - zbus
   - zvariant
   - zwlr
+  - zswap
+  - Zswapped
+  - ccache
