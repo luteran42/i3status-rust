@@ -41,6 +41,7 @@ words:
   - dbus
   - ddcci
   - ddcutil
+  - devel
   - dmenu
   - docsrs
   - dtolnay
@@ -73,6 +74,7 @@ words:
   - inotify
   - iowait
   - ipapi
+  - itertools
   - iwctl
   - kbdd
   - kbddbus
@@ -95,9 +97,11 @@ words:
   - NLMSG
   - nlmsghdr
   - nmtui
+  - noconfirm
   - NOFLAGS
   - noheader
   - NOPASSWD
+  - noprogressbar
   - notif
   - Noto
   - NZXT
