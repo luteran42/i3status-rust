@@ -34,6 +34,9 @@
 //! `swap_free_percents`      | as above but as a percentage of total memory                                    | Number | Percents
 //! `swap_used`               | Swap used                                                                       | Number | Bytes
 //! `swap_used_percents`      | as above but as a percentage of total memory                                    | Number | Percents
+//! `zram_compressed`         | Compressed zram memory usage                                                    | Number | Bytes
+//! `zram_decompressed`       | Decompressed zram memory usage                                                  | Number | Bytes
+//! 'zram_comp_ratio'         | Ratio of the decompressed/compressed zram memory                                | Number | -
 //! `zswap_compressed`        | Compressed zswap memory usage (>=Linux 5.19)                                    | Number | Bytes
 //! `zswap_decompressed`      | Decompressed zswap memory usage (>=Linux 5.19)                                  | Number | Bytes
 //! `zswap_decompressed_percents` | as above but as a percentage of total zswap memory  (>=Linux 5.19)          | Number | Percents
@@ -161,6 +164,16 @@ pub async fn run(config: &Config, api: &CommonApi) -> Result<()> {
             zswap_decompressed / zswap_compressed
         };
 
+        // Zram usage
+        let zram_compressed = mem_state.zram_compressed as f64;
+        let zram_decompressed = mem_state.zram_decompressed as f64;
+
+        let zram_comp_ratio = if zram_compressed == 0.0 {
+            0.0
+        } else {
+            zram_decompressed / zram_compressed
+        };
+
         let mut widget = Widget::new().with_format(format.clone());
         widget.set_values(map! {
             "icon" => Value::icon("memory_mem"),
@@ -183,10 +196,13 @@ pub async fn run(config: &Config, api: &CommonApi) -> Result<()> {
             "buffers_percent" => Value::percents(buffers / mem_total * 100.),
             "cached" => Value::bytes(cached),
             "cached_percent" => Value::percents(cached / mem_total * 100.),
+            "zram_compressed" => Value::bytes(zram_compressed),
+            "zram_decompressed" => Value::bytes(zram_decompressed),
+            "zram_comp_ratio" => Value::number(zram_comp_ratio),
             "zswap_compressed" => Value::bytes(zswap_compressed),
             "zswap_decompressed" => Value::bytes(zswap_decompressed),
             "zswap_decompressed_percents" => Value::percents(zswap_decompressed / (swap_used + swap_cached) * 100.),
-            "zswap_comp_ratio" => Value::number(zswap_comp_ratio)
+            "zswap_comp_ratio" => Value::number(zswap_comp_ratio),
         });
 
         let mem_state = match mem_used / mem_total * 100. {
@@ -241,6 +257,8 @@ struct Memstate {
     swap_total: u64,
     swap_free: u64,
     swap_cached: u64,
+    zram_compressed: u64,
+    zram_decompressed: u64,
     zswap_compressed: u64,
     zswap_decompressed: u64,
     zfs_arc_cache: u64,
@@ -297,6 +315,34 @@ impl Memstate {
             }
 
             line.clear();
+        }
+
+        // For ZRAM
+        let mut zram_file = BufReader::new(
+            File::open("/sys/block/zram0/mm_stat")
+                .await
+                .error("/sys/block/zram0/mm_stat does not exist")?,
+        );
+        while zram_file
+            .read_line(&mut line)
+            .await
+            .error("failed to read /sys/block/zram0/mm_stat")?
+            != 0
+        {
+            let mut values = line.split_whitespace().map(|s| s.parse::<u64>());
+
+            if let (Some(Ok(zram_swap_size)), Some(Ok(zram_comp_size))) =
+                (values.next(), values.next())
+            {
+                // return 0 if <128KiB
+                if zram_swap_size <= 131072 {
+                    mem_state.zram_decompressed = 0;
+                    mem_state.zram_compressed = 0;
+                } else {
+                    mem_state.zram_decompressed = zram_swap_size;
+                    mem_state.zram_compressed = zram_comp_size;
+                }
+            }
         }
 
         // For ZFS
