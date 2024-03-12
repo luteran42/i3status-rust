@@ -268,7 +268,6 @@ struct Memstate {
 impl Memstate {
     async fn new() -> Result<Self> {
         // Reference: https://www.kernel.org/doc/Documentation/filesystems/proc.txt
-
         let mut file = BufReader::new(
             File::open("/proc/meminfo")
                 .await
@@ -318,29 +317,38 @@ impl Memstate {
         }
 
         // For ZRAM
-        let mut zram_file = BufReader::new(
-            File::open("/sys/block/zram0/mm_stat")
+        for i in 0.. {
+            let zram_file_path = format!("/sys/block/zram{}/mm_stat", i);
+            match File::open(&zram_file_path)
                 .await
-                .error("/sys/block/zram0/mm_stat does not exist")?,
-        );
-        while zram_file
-            .read_line(&mut line)
-            .await
-            .error("failed to read /sys/block/zram0/mm_stat")?
-            != 0
-        {
-            let mut values = line.split_whitespace().map(|s| s.parse::<u64>());
-
-            if let (Some(Ok(zram_swap_size)), Some(Ok(zram_comp_size))) =
-                (values.next(), values.next())
+                .error("/sys/block/zramX/mm_stat does not exist")
             {
-                // return 0 if <128KiB
-                if zram_swap_size <= 131072 {
-                    mem_state.zram_decompressed = 0;
-                    mem_state.zram_compressed = 0;
-                } else {
-                    mem_state.zram_decompressed = zram_swap_size;
-                    mem_state.zram_compressed = zram_comp_size;
+                Ok(file) => {
+                    let mut zram_file = BufReader::new(file);
+                    let mut line = String::new();
+                    while zram_file
+                        .read_line(&mut line)
+                        .await
+                        .error("failed to read /sys/block/zramX/mm_stat")?
+                        != 0
+                    {
+                        let mut values = line.split_whitespace().map(|s| s.parse::<u64>());
+
+                        if let (Some(Ok(zram_swap_size)), Some(Ok(zram_comp_size))) =
+                            (values.next(), values.next())
+                        {
+                            // return 0 if <128KiB
+                            if zram_swap_size >= 131_072 {
+                                mem_state.zram_decompressed += zram_swap_size;
+                                mem_state.zram_compressed += zram_comp_size;
+                            }
+                        }
+                        line.clear();
+                    }
+                }
+                Err(_) => {
+                    // File does not exist, move on
+                    break;
                 }
             }
         }
