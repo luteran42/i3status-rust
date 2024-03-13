@@ -159,20 +159,20 @@ pub async fn run(config: &Config, api: &CommonApi) -> Result<()> {
         let zswap_compressed = mem_state.zswap_compressed as f64 * 1024.;
         let zswap_decompressed = mem_state.zswap_decompressed as f64 * 1024.;
 
-        let zswap_comp_ratio = if zswap_compressed == 0.0 {
-            0.0
-        } else {
+        let zswap_comp_ratio = if zswap_compressed != 0.0 {
             zswap_decompressed / zswap_compressed
+        } else {
+            0.0
         };
 
         // Zram usage
         let zram_compressed = mem_state.zram_compressed as f64;
         let zram_decompressed = mem_state.zram_decompressed as f64;
 
-        let zram_comp_ratio = if zram_compressed == 0.0 {
-            0.0
-        } else {
+        let zram_comp_ratio = if zram_compressed != 0.0 {
             zram_decompressed / zram_compressed
+        } else {
+            0.0
         };
 
         let mut widget = Widget::new().with_format(format.clone());
