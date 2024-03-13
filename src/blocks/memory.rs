@@ -36,6 +36,7 @@
 //! `swap_used_percents`      | as above but as a percentage of total memory                                    | Number | Percents
 //! `zram_compressed`         | Compressed zram memory usage                                                    | Number | Bytes
 //! `zram_decompressed`       | Decompressed zram memory usage                                                  | Number | Bytes
+//! `zram_decompressed_percents` | as above but as a percentage of total zram memory                            | Number | Percents
 //! 'zram_comp_ratio'         | Ratio of the decompressed/compressed zram memory                                | Number | -
 //! `zswap_compressed`        | Compressed zswap memory usage (>=Linux 5.19)                                    | Number | Bytes
 //! `zswap_decompressed`      | Decompressed zswap memory usage (>=Linux 5.19)                                  | Number | Bytes
@@ -198,6 +199,7 @@ pub async fn run(config: &Config, api: &CommonApi) -> Result<()> {
             "cached_percent" => Value::percents(cached / mem_total * 100.),
             "zram_compressed" => Value::bytes(zram_compressed),
             "zram_decompressed" => Value::bytes(zram_decompressed),
+            "zram_decompressed_percents" => Value::percents(zram_decompressed / (swap_used + swap_cached) * 100.),
             "zram_comp_ratio" => Value::number(zram_comp_ratio),
             "zswap_compressed" => Value::bytes(zswap_compressed),
             "zswap_decompressed" => Value::bytes(zswap_decompressed),
@@ -321,7 +323,7 @@ impl Memstate {
             let zram_file_path = format!("/sys/block/zram{}/mm_stat", i);
             match File::open(&zram_file_path)
                 .await
-                .error("/sys/block/zramX/mm_stat does not exist")
+                .error("/sys/block/zram[0-9]/mm_stat does not exist")
             {
                 Ok(file) => {
                     let mut zram_file = BufReader::new(file);
@@ -329,7 +331,7 @@ impl Memstate {
                     while zram_file
                         .read_line(&mut line)
                         .await
-                        .error("failed to read /sys/block/zramX/mm_stat")?
+                        .error("failed to read /sys/block/zram[0-9]/mm_stat")?
                         != 0
                     {
                         let mut values = line.split_whitespace().map(|s| s.parse::<u64>());
@@ -337,8 +339,8 @@ impl Memstate {
                         if let (Some(Ok(zram_swap_size)), Some(Ok(zram_comp_size))) =
                             (values.next(), values.next())
                         {
-                            // return 0 if <128KiB
-                            if zram_swap_size >= 131_072 {
+                            // zram initializes with small amount by default, return 0
+                            if zram_swap_size >= 1024 {
                                 mem_state.zram_decompressed += zram_swap_size;
                                 mem_state.zram_compressed += zram_comp_size;
                             }
@@ -347,7 +349,6 @@ impl Memstate {
                     }
                 }
                 Err(_) => {
-                    // File does not exist, move on
                     break;
                 }
             }
