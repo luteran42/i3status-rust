@@ -340,7 +340,7 @@ impl Memstate {
                             (values.next(), values.next())
                         {
                             // zram initializes with small amount by default, return 0
-                            if zram_swap_size >= 1024 {
+                            if zram_swap_size >= 131_072 {
                                 mem_state.zram_decompressed += zram_swap_size;
                                 mem_state.zram_compressed += zram_comp_size;
                             }
