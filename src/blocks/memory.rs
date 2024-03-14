@@ -64,7 +64,7 @@
 
 use std::cmp::min;
 use std::str::FromStr;
-use tokio::fs::File;
+use tokio::fs::{read_dir, File};
 use tokio::io::{AsyncBufReadExt, BufReader};
 
 use super::prelude::*;
@@ -322,32 +322,37 @@ impl Memstate {
         }
 
         // For ZRAM
-        if let Ok(entries) = std::fs::read_dir("/sys/block/") {
-            for entry in entries.flatten() {
-                if let Some(name) = entry.file_name().to_str() {
-                    if name.starts_with("zram") {
-                        let zram_file_path = format!("/sys/block/{}/mm_stat", name);
-                        let Ok(file) = File::open(&zram_file_path).await else {
-                            break;
-                        };
+        let mut entries = read_dir("/sys/block/")
+            .await
+            .error("Could not read /sys/block")?;
+        while let Some(entry) = entries
+            .next_entry()
+            .await
+            .error("Could not get next file /sys/block")?
+        {
+            if let Some(name) = entry.file_name().to_str() {
+                if name.starts_with("zram") {
+                    let zram_file_path = entry.path().join("mm_stat");
+                    let Ok(file) = File::open(zram_file_path).await else {
+                        break;
+                    };
 
-                        let mut buf = BufReader::new(file);
-                        let mut line = String::new();
+                    let mut buf = BufReader::new(file);
+                    let mut line = String::new();
 
-                        if buf.read_to_string(&mut line).await.is_err() {
-                            continue;
-                        };
+                    if buf.read_to_string(&mut line).await.is_err() {
+                        continue;
+                    };
 
-                        let mut values = line.split_whitespace().map(|s| s.parse::<u64>());
+                    let mut values = line.split_whitespace().map(|s| s.parse::<u64>());
 
-                        if let (Some(Ok(zram_swap_size)), Some(Ok(zram_comp_size))) =
-                            (values.next(), values.next())
-                        {
-                            // zram initializes with small amount by default, return 0 then
-                            if zram_swap_size >= 65_536 {
-                                mem_state.zram_decompressed += zram_swap_size;
-                                mem_state.zram_compressed += zram_comp_size;
-                            }
+                    if let (Some(Ok(zram_swap_size)), Some(Ok(zram_comp_size))) =
+                        (values.next(), values.next())
+                    {
+                        // zram initializes with small amount by default, return 0 then
+                        if zram_swap_size >= 65_536 {
+                            mem_state.zram_decompressed += zram_swap_size;
+                            mem_state.zram_compressed += zram_comp_size;
                         }
                     }
                 }
