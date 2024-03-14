@@ -36,7 +36,6 @@
 //! `swap_used_percents`      | as above but as a percentage of total memory                                    | Number | Percents
 //! `zram_compressed`         | Compressed zram memory usage                                                    | Number | Bytes
 //! `zram_decompressed`       | Decompressed zram memory usage                                                  | Number | Bytes
-//! `zram_decompressed_percents` | as above but as a percentage of total zram memory                            | Number | Percents
 //! 'zram_comp_ratio'         | Ratio of the decompressed/compressed zram memory                                | Number | -
 //! `zswap_compressed`        | Compressed zswap memory usage (>=Linux 5.19)                                    | Number | Bytes
 //! `zswap_decompressed`      | Decompressed zswap memory usage (>=Linux 5.19)                                  | Number | Bytes
@@ -179,11 +178,6 @@ pub async fn run(config: &Config, api: &CommonApi) -> Result<()> {
         } else {
             0.0
         };
-        let zram_decompressed_percents = if (swap_used + swap_cached) != 0.0 {
-            zram_decompressed / (swap_used + swap_cached) * 100.0
-        } else {
-            0.0
-        };
 
         let mut widget = Widget::new().with_format(format.clone());
         widget.set_values(map! {
@@ -209,7 +203,6 @@ pub async fn run(config: &Config, api: &CommonApi) -> Result<()> {
             "cached_percent" => Value::percents(cached / mem_total * 100.),
             "zram_compressed" => Value::bytes(zram_compressed),
             "zram_decompressed" => Value::bytes(zram_decompressed),
-            "zram_decompressed_percents" => Value::percents(zram_decompressed_percents),
             "zram_comp_ratio" => Value::number(zram_comp_ratio),
             "zswap_compressed" => Value::bytes(zswap_compressed),
             "zswap_decompressed" => Value::bytes(zswap_decompressed),
