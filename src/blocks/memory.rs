@@ -164,6 +164,11 @@ pub async fn run(config: &Config, api: &CommonApi) -> Result<()> {
         } else {
             0.0
         };
+        let zswap_decompressed_percents = if (swap_used + swap_cached) != 0.0 {
+            zswap_decompressed / (swap_used + swap_cached) * 100.0
+        } else {
+            0.0
+        };
 
         // Zram usage
         let zram_compressed = mem_state.zram_compressed as f64;
@@ -171,6 +176,11 @@ pub async fn run(config: &Config, api: &CommonApi) -> Result<()> {
 
         let zram_comp_ratio = if zram_compressed != 0.0 {
             zram_decompressed / zram_compressed
+        } else {
+            0.0
+        };
+        let zram_decompressed_percents = if (swap_used + swap_cached) != 0.0 {
+            zram_decompressed / (swap_used + swap_cached) * 100.0
         } else {
             0.0
         };
@@ -199,11 +209,11 @@ pub async fn run(config: &Config, api: &CommonApi) -> Result<()> {
             "cached_percent" => Value::percents(cached / mem_total * 100.),
             "zram_compressed" => Value::bytes(zram_compressed),
             "zram_decompressed" => Value::bytes(zram_decompressed),
-            "zram_decompressed_percents" => Value::percents(zram_decompressed / (swap_used + swap_cached) * 100.),
+            "zram_decompressed_percents" => Value::percents(zram_decompressed_percents),
             "zram_comp_ratio" => Value::number(zram_comp_ratio),
             "zswap_compressed" => Value::bytes(zswap_compressed),
             "zswap_decompressed" => Value::bytes(zswap_decompressed),
-            "zswap_decompressed_percents" => Value::percents(zswap_decompressed / (swap_used + swap_cached) * 100.),
+            "zswap_decompressed_percents" => Value::percents(zswap_decompressed_percents),
             "zswap_comp_ratio" => Value::number(zswap_comp_ratio),
         });
 
