@@ -322,21 +322,22 @@ impl Memstate {
         }
 
         // For ZRAM
-        for i in 0.. {
-            let zram_file_path = format!("/sys/block/zram{}/mm_stat", i);
-            match File::open(&zram_file_path)
-                .await
-                .error("/sys/block/zram[0-9]/mm_stat does not exist")
-            {
-                Ok(file) => {
-                    let mut zram_file = BufReader::new(file);
-                    let mut line = String::new();
-                    while zram_file
-                        .read_line(&mut line)
-                        .await
-                        .error("failed to read /sys/block/zram[0-9]/mm_stat")?
-                        != 0
-                    {
+        if let Ok(entries) = std::fs::read_dir("/sys/block/") {
+            for entry in entries.flatten() {
+                if let Some(name) = entry.file_name().to_str() {
+                    if name.starts_with("zram") {
+                        let zram_file_path = format!("/sys/block/{}/mm_stat", name);
+                        let Ok(file) = File::open(&zram_file_path).await else {
+                            break;
+                        };
+
+                        let mut buf = BufReader::new(file);
+                        let mut line = String::new();
+
+                        if buf.read_to_string(&mut line).await.is_err() {
+                            continue;
+                        };
+
                         let mut values = line.split_whitespace().map(|s| s.parse::<u64>());
 
                         if let (Some(Ok(zram_swap_size)), Some(Ok(zram_comp_size))) =
@@ -348,11 +349,7 @@ impl Memstate {
                                 mem_state.zram_compressed += zram_comp_size;
                             }
                         }
-                        line.clear();
                     }
-                }
-                Err(_) => {
-                    break;
                 }
             }
         }
