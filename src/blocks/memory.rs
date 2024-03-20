@@ -132,16 +132,15 @@ pub async fn run(config: &Config, api: &CommonApi) -> Result<()> {
         let pagecache = mem_state.pagecache as f64 * 1024.;
         let reclaimable = mem_state.s_reclaimable as f64 * 1024.;
         let shmem = mem_state.shmem as f64 * 1024.;
+        let buffers = mem_state.buffers as f64 * 1024.;
 
         // See https://lore.kernel.org/lkml/1455827801-13082-1-git-send-email-hannes@cmpxchg.org/
         let cached = pagecache + reclaimable - shmem + zfs_shrinkable_size;
 
-        let buffers = mem_state.buffers as f64 * 1024.;
-
         // same logic as htop
-        let used_diff = mem_free + buffers + pagecache + reclaimable;
+        let used_diff = mem_free + buffers + cached;
         let mem_used = if mem_total >= used_diff {
-            mem_total - used_diff + shmem
+            mem_total - used_diff
         } else {
             mem_total - mem_free
         };
