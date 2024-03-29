@@ -11,7 +11,7 @@
 //! Key | Values | Default
 //! ----|--------|--------
 //! `driver` | `"auto"`, `"pulseaudio"`, `"alsa"`. | `"auto"` (Pulseaudio with ALSA fallback)
-//! `format` | A string to customise the output of this block. See below for available placeholders. | <code> $icon {$volume.eng(w:2) &vert;}</code>
+//! `format` | A string to customise the output of this block. See below for available placeholders. | <code>\" $icon {$volume.eng(w:2) \|}\"</code>
 //! `name` | PulseAudio device name, or the ALSA control name as found in the output of `amixer -D yourdevice scontrols`. | PulseAudio: `@DEFAULT_SINK@` / ALSA: `Master`
 //! `device` | ALSA device name, usually in the form "hw:X" or "hw:X,Y" where `X` is the card number and `Y` is the device number as found in the output of `aplay -l`. | `default`
 //! `device_kind` | PulseAudio device kind: `source` or `sink`. | `"sink"`
@@ -239,7 +239,7 @@ pub async fn run(config: &Config, api: &CommonApi) -> Result<()> {
             }
             Some(Mappings::Exact(m)) => {
                 if let Some(mapped) = m.get(&output_name) {
-                    output_name = mapped.clone();
+                    output_name.clone_from(mapped);
                 }
             }
             None => (),
