@@ -1,5 +1,6 @@
 pub mod color;
 pub mod separator;
+pub mod xresources;
 
 use std::fmt;
 use std::ops::{Deref, DerefMut};
@@ -54,6 +55,7 @@ pub struct ThemeInner {
     pub alternating_tint_bg: Color,
     pub alternating_tint_fg: Color,
     pub end_separator: Separator,
+    pub start_separator: Separator,
 }
 
 impl Theme {
@@ -75,6 +77,9 @@ impl Theme {
         }
         if let Some(end_separator) = overrides.end_separator {
             self.end_separator = end_separator;
+        }
+        if let Some(start_separator) = overrides.start_separator {
+            self.start_separator = start_separator;
         }
 
         macro_rules! apply {
@@ -128,6 +133,7 @@ pub struct ThemeOverrides {
     pub alternating_tint_bg: Option<ColorOrLink>,
     pub alternating_tint_fg: Option<ColorOrLink>,
     pub end_separator: Option<Separator>,
+    pub start_separator: Option<Separator>,
 }
 
 impl TryFrom<ThemeUserConfig> for Theme {

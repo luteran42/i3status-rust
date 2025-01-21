@@ -20,7 +20,7 @@
 //!
 //! Key | Description | Default
 //! ----|-------------|----------
-//! `button` | `left`, `middle`, `right`, `up`, `down`, `forward`, `back` or [`double_left`](MouseButton). | -
+//! `button` | `left`, `middle`, `right`, `up`/`wheel_up`, `down`/`wheel_down`, `wheel_left`, `wheel_right`, `forward`, `back` or [`double_left`](MouseButton). | -
 //! `widget` | To which part of the block this entry applies (accepts regex) | `"block"`
 //! `cmd` | Command to run when the mouse button event is detected. | None
 //! `action` | Which block action to trigger | None
@@ -144,23 +144,14 @@ macro_rules! define_blocks {
 
 define_blocks!(
     amd_gpu,
-    #[deprecated(
-        since = "0.33.0",
-        note = "The block has been deprecated in favor of the the packages block"
-    )]
-    apt,
     backlight,
     battery,
     bluetooth,
+    calendar,
     cpu,
     custom,
     custom_dbus,
     disk_space,
-    #[deprecated(
-        since = "0.33.0",
-        note = "The block has been deprecated in favor of the the packages block"
-    )]
-    dnf,
     docker,
     external_ip,
     focused_window,
@@ -179,11 +170,6 @@ define_blocks!(
     notmuch,
     nvidia_gpu,
     packages,
-    #[deprecated(
-        since = "0.33.0",
-        note = "The block has been deprecated in favor of the the packages block"
-    )]
-    pacman,
     pomodoro,
     privacy,
     rofication,

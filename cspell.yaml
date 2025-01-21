@@ -30,9 +30,12 @@ words:
   - bokmaal
   - bugz
   - busctl
+  - caldav
+  - ccache
   - chrono
   - clippy
   - CLOEXEC
+  - cmap
   - conn
   - consts
   - conv
@@ -63,6 +66,7 @@ words:
   - horiz
   - hypot
   - ibus
+  - icalendar
   - iface
   - ifaces
   - ifaddrmsg
@@ -114,6 +118,7 @@ words:
   - pavucontrol
   - percents
   - pikaur
+  - pkce
   - pkill
   - playerctl
   - playerctld
@@ -169,6 +174,8 @@ words:
   - upower
   - uptodate
   - vals
+  - VCALENDAR
+  - VEVENT
   - wayrs
   - wdoll
   - WLAN
@@ -177,15 +184,16 @@ words:
   - wofi
   - wttr
   - xclip
+  - xcolors
   - xesam
   - xkbswitch
   - XKCD
   - xrandr
+  - xresources
   - xtask
   - zbus
+  - zram
+  - zswap
+  - Zswapped
   - zvariant
   - zwlr
-  - zswap
-  - zram
-  - Zswapped
-  - ccache

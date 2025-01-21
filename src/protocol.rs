@@ -38,11 +38,12 @@ where
 
     let mut prev_merge_with_next = false;
 
-    for widgets in blocks
+    for (i, widgets) in blocks
         .iter()
         .map(|x| x.borrow())
         .filter(|x| !x.segments.is_empty())
         .cloned()
+        .enumerate()
     {
         let RenderedBlock {
             mut segments,
@@ -64,7 +65,12 @@ where
             alt = !alt;
         }
 
-        if let Separator::Custom(separator) = &config.theme.separator {
+        let separator = match &config.theme.start_separator {
+            Separator::Custom(_) if i == 0 => &config.theme.start_separator,
+            _ => &config.theme.separator,
+        };
+
+        if let Separator::Custom(separator) = separator {
             if !prev_merge_with_next {
                 // The first widget's BG is used to get the FG color for the current separator
                 let sep_fg = if config.theme.separator_fg == Color::Auto {
@@ -106,12 +112,28 @@ where
     }
 
     if let Separator::Custom(end_separator) = &config.theme.end_separator {
-        rendered_blocks.push(I3BarBlock {
+        // The separator's FG is the last block's last widget's BG
+        let sep_fg = if config.theme.separator_fg == Color::Auto {
+            prev_last_bg
+        } else {
+            config.theme.separator_fg
+        };
+
+        // The separator has no background color
+        let sep_bg = if config.theme.separator_bg == Color::Auto {
+            Color::None
+        } else {
+            config.theme.separator_bg
+        };
+
+        let separator = I3BarBlock {
             full_text: end_separator.clone(),
-            background: Color::None,
-            color: prev_last_bg,
+            background: sep_bg,
+            color: sep_fg,
             ..Default::default()
-        });
+        };
+
+        rendered_blocks.push(separator);
     }
 
     println!("{},", serde_json::to_string(&rendered_blocks).unwrap());

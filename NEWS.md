@@ -1,4 +1,20 @@
-# i3status-rust 0.33.2 [unreleased]
+# i3status-rust 0.34.0 [unreleased]
+
+### New Blocks and Features
+
+* `.eng` formatter: add show parameter
+* when using theme overrides you can now reference a color name defined in `~/.Xresources`, e.g., `x:background` looks for a line like `*background: #aabbcc` in `~/.Xresources` (see also [.Xresources](https://wiki.debian.org/Xresources))
+* Add support for wheel left and right clicks
+
+### Bug Fixes and Improvements
+
+* Fix `bad event` errors in `focused_window` block.
+
+### Breaking Changes
+
+* Removed `apt`, `dnf`, and `pacman` blocks, use `packages` block instead
+
+# i3status-rust 0.33.2
 
 ### New Blocks and Features
 
@@ -8,6 +24,7 @@
 * Weather: add support for the US National Weather Service.
 * New `scratchpad` block which shows the number of windows in i3/sway scratchpad.
 * New `.tally` and `.duration` formatters (refer to [docs](https://docs.rs/i3status-rs/latest/i3status_rs/formatting/index.html) for more info).
+* Add new `calendar` block which can pull from multiple `CalDav` calendars.
 
 ### Bug Fixes and Improvements
 
