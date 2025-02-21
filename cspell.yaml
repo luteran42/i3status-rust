@@ -183,10 +183,12 @@ words:
   - wlsunset
   - wofi
   - wttr
+  - xbps
   - xclip
   - xcolors
   - xesam
   - xkbswitch
+  - xkbevent
   - XKCD
   - xrandr
   - xresources
