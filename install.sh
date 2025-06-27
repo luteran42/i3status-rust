@@ -2,5 +2,5 @@
 
 set -ex
 
-cargo zigbuild --profile release-small --locked
-cp -f target/release-small/i3status-rs ~/.local/bin/cargo/bin/i3status-rs
+cargo zigbuild --release --locked
+cp -f ./target/release/i3status-rs ~/.local/bin/cargo/bin/
