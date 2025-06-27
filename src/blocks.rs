@@ -29,10 +29,10 @@
 
 mod prelude;
 
-use futures::future::FutureExt;
+use futures::future::FutureExt as _;
 use futures::stream::FuturesUnordered;
 use serde::de::{self, Deserialize};
-use tokio::sync::{mpsc, Notify};
+use tokio::sync::{Notify, mpsc};
 
 use std::borrow::Cow;
 use std::sync::Arc;
@@ -40,6 +40,7 @@ use std::time::Duration;
 
 use crate::click::MouseButton;
 use crate::errors::*;
+use crate::geolocator::{Geolocator, IPAddressInfo};
 use crate::widget::Widget;
 use crate::{BoxedFuture, Request, RequestCmd};
 
@@ -112,7 +113,7 @@ macro_rules! define_blocks {
             where
                 D: de::Deserializer<'de>,
             {
-                use de::Error;
+                use de::Error as _;
 
                 let mut table = toml::Table::deserialize(deserializer)?;
                 let block_name = table.remove("block").ok_or_else(|| D::Error::missing_field("block"))?;
@@ -208,6 +209,7 @@ pub struct CommonApi {
     pub(crate) update_request: Arc<Notify>,
     pub(crate) request_sender: mpsc::UnboundedSender<Request>,
     pub(crate) error_interval: Duration,
+    pub(crate) geolocator: Arc<Geolocator>,
 }
 
 impl CommonApi {
@@ -266,5 +268,18 @@ impl CommonApi {
 
     pub async fn wait_for_update_request(&self) {
         self.update_request.notified().await;
+    }
+
+    fn locator_name(&self) -> Cow<'static, str> {
+        self.geolocator.name()
+    }
+
+    /// No-op if last API call was made in the last `interval` seconds.
+    pub async fn find_ip_location(
+        &self,
+        client: &reqwest::Client,
+        interval: Duration,
+    ) -> Result<IPAddressInfo> {
+        self.geolocator.find_ip_location(client, interval).await
     }
 }

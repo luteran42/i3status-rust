@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use dirs::{config_dir, data_dir};
 use serde::de::DeserializeOwned;
-use tokio::io::AsyncReadExt;
+use tokio::io::AsyncReadExt as _;
 use tokio::process::Command;
 
 use crate::errors::*;
@@ -252,6 +252,23 @@ pub fn default<T: Default>() -> T {
     Default::default()
 }
 
+pub trait StreamExtDebounced: futures::StreamExt {
+    fn next_debounced(&mut self) -> impl Future<Output = Option<Self::Item>>;
+}
+
+impl<T: futures::StreamExt + Unpin> StreamExtDebounced for T {
+    async fn next_debounced(&mut self) -> Option<Self::Item> {
+        let mut result = self.next().await?;
+        let mut noop_ctx = std::task::Context::from_waker(std::task::Waker::noop());
+        loop {
+            match self.poll_next_unpin(&mut noop_ctx) {
+                std::task::Poll::Ready(Some(x)) => result = x,
+                std::task::Poll::Ready(None) | std::task::Poll::Pending => return Some(result),
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -265,9 +282,11 @@ mod tests {
     #[tokio::test]
     async fn test_has_command_err() {
         // we assume thequickbrownfoxjumpsoverthelazydog command does not exist
-        assert!(!has_command("thequickbrownfoxjumpsoverthelazydog")
-            .await
-            .unwrap());
+        assert!(
+            !has_command("thequickbrownfoxjumpsoverthelazydog")
+                .await
+                .unwrap()
+        );
     }
 
     #[test]

@@ -8,7 +8,7 @@ use ::pipewire::{
     context::Context, keys, main_loop::MainLoop, properties::properties, spa::utils::dict::DictRef,
     types::ObjectType,
 };
-use itertools::Itertools;
+use itertools::Itertools as _;
 use tokio::sync::Notify;
 
 use super::*;
@@ -29,7 +29,7 @@ impl Node {
         Self {
             name: global_props
                 .get(&keys::NODE_NAME)
-                .map_or_else(|| format!("node_{}", global_id), |s| s.to_string()),
+                .map_or_else(|| format!("node_{global_id}"), |s| s.to_string()),
             nick: global_props.get(&keys::NODE_NICK).map(|s| s.to_string()),
             media_class: global_props.get(&keys::MEDIA_CLASS).map(|s| s.to_string()),
             media_role: global_props.get(&keys::MEDIA_ROLE).map(|s| s.to_string()),

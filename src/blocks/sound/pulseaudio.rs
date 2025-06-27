@@ -1,19 +1,19 @@
 use std::cmp::{max, min};
 use std::convert::{TryFrom, TryInto};
 use std::io;
-use std::os::fd::{IntoRawFd, RawFd};
+use std::os::fd::{IntoRawFd as _, RawFd};
 use std::sync::{Arc, Mutex, Weak};
 use std::thread;
 
 use libc::c_void;
 use libpulse_binding::callbacks::ListResult;
 use libpulse_binding::context::{
-    introspect::ServerInfo, introspect::SinkInfo, introspect::SourceInfo, subscribe::Facility,
-    subscribe::InterestMaskSet, Context, FlagSet, State as PulseState,
+    Context, FlagSet, State as PulseState, introspect::ServerInfo, introspect::SinkInfo,
+    introspect::SourceInfo, subscribe::Facility, subscribe::InterestMaskSet,
 };
 use libpulse_binding::mainloop::api::MainloopApi;
 use libpulse_binding::mainloop::standard::{IterateResult, Mainloop};
-use libpulse_binding::proplist::{properties, Proplist};
+use libpulse_binding::proplist::{Proplist, properties};
 use libpulse_binding::volume::{ChannelVolumes, Volume};
 use tokio::sync::Notify;
 

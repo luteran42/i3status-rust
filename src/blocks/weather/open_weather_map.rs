@@ -1,6 +1,6 @@
 use super::*;
 use chrono::{DateTime, Utc};
-use serde::{de, Deserializer};
+use serde::{Deserializer, de};
 
 pub(super) const GEO_URL: &str = "https://api.openweathermap.org/geo/1.0";
 pub(super) const CURRENT_URL: &str = "https://api.openweathermap.org/data/2.5/weather";
@@ -244,7 +244,7 @@ struct CityCoord {
 impl WeatherProvider for Service<'_> {
     async fn get_weather(
         &self,
-        autolocated: Option<&Coordinates>,
+        autolocated: Option<&IPAddressInfo>,
         need_forecast: bool,
     ) -> Result<WeatherResult> {
         let location_query = autolocated

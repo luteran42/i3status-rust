@@ -1,16 +1,16 @@
-use base64::Engine;
+use base64::Engine as _;
 use oauth2::basic::{BasicClient, BasicTokenType};
 use oauth2::reqwest::async_http_client;
 use oauth2::{
     AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken, EmptyExtraTokenFields,
     PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, RefreshToken, Scope, StandardTokenResponse,
-    TokenResponse, TokenUrl,
+    TokenResponse as _, TokenUrl,
 };
-use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION};
 use reqwest::Url;
+use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderValue};
 use std::path::{Path, PathBuf};
 use tokio::fs::File;
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt as _, AsyncReadExt as _, AsyncWriteExt as _, BufReader};
 use tokio::net::TcpListener;
 
 use super::CalendarError;
@@ -190,7 +190,7 @@ impl OAuth2Flow {
     ) -> Result<OAuth2TokenResponse, CalendarError> {
         let client = self.client.clone();
         let redirect_port = self.redirect_port;
-        let listener = TcpListener::bind(format!("127.0.0.1:{}", redirect_port)).await?;
+        let listener = TcpListener::bind(format!("127.0.0.1:{redirect_port}")).await?;
         let (mut stream, _) = listener.accept().await?;
         let mut request_line = String::new();
         let mut reader = BufReader::new(&mut stream);

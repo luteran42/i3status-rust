@@ -1,6 +1,7 @@
 #![warn(clippy::match_same_arms)]
 #![warn(clippy::semicolon_if_nothing_returned)]
 #![warn(clippy::unnecessary_wraps)]
+#![warn(clippy::unused_trait_names)]
 #![allow(clippy::single_match)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
@@ -12,6 +13,7 @@ pub mod config;
 pub mod errors;
 pub mod escape;
 pub mod formatting;
+pub mod geolocator;
 pub mod icons;
 mod netlink;
 pub mod protocol;
@@ -26,22 +28,21 @@ pub use serde_json;
 pub use tokio;
 
 use std::borrow::Cow;
-use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 
-use futures::stream::{FuturesUnordered, StreamExt};
 use futures::Stream;
+use futures::stream::{FuturesUnordered, StreamExt as _};
 use tokio::process::Command;
-use tokio::sync::{mpsc, Notify};
+use tokio::sync::{Notify, mpsc};
 
 use crate::blocks::{BlockAction, BlockError, CommonApi};
 use crate::click::{ClickHandler, MouseButton};
 use crate::config::{BlockConfigEntry, Config, SharedConfig};
 use crate::errors::*;
-use crate::formatting::value::Value;
 use crate::formatting::Format;
+use crate::formatting::value::Value;
 use crate::protocol::i3bar_block::I3BarBlock;
 use crate::protocol::i3bar_event::{self, I3BarEvent};
 use crate::signals::Signal;
@@ -268,6 +269,7 @@ impl BarState {
             update_request: update_request.clone(),
             request_sender: self.request_sender.clone(),
             error_interval: Duration::from_secs(block_config.common.error_interval),
+            geolocator: self.config.geolocator.clone(),
         };
 
         let error_format = block_config

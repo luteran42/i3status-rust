@@ -5,7 +5,7 @@ use i3status_rs::config::Config;
 use i3status_rs::errors::*;
 use i3status_rs::escape::Escaped;
 use i3status_rs::widget::{State, Widget};
-use i3status_rs::{protocol, util, BarState};
+use i3status_rs::{BarState, protocol, util};
 
 #[derive(Debug, thiserror::Error)]
 enum ErrorMaybeInBlock {
@@ -80,7 +80,7 @@ fn restart() -> ! {
 
     // Add "--no-init" argument if not already added
     let no_init_arg = CString::new("--no-init").unwrap();
-    if !arg.iter().any(|a| *a == no_init_arg) {
+    if !arg.contains(&no_init_arg) {
         arg.push(no_init_arg);
     }
 
