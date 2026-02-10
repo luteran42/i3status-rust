@@ -1,4 +1,4 @@
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex, Weak};
@@ -44,9 +44,6 @@ struct VolInfo {
 struct NodeHandle {
     node: pipewire::node::Node,
     _node_listener: pipewire::node::NodeListener,
-    kind: DeviceKind,
-    name: String,
-    description: Option<String>,
 }
 
 #[derive(Debug)]
@@ -105,15 +102,15 @@ impl Client {
         let core = context.connect(None).expect("Failed to connect");
         let registry = Rc::new(core.get_registry().expect("Failed to get registry"));
 
-        let updated = Rc::new(Cell::new(false));
-        let updated_copy = updated.clone();
-        let updated_copy2 = updated.clone();
-
+        // These need Rc<RefCell<>> because multiple closures mutate them
         let nodes: Rc<RefCell<HashMap<u32, NodeHandle>>> = Rc::new(RefCell::new(HashMap::new()));
-        let nodes_cb = nodes.clone();
+        let nodes_global = nodes.clone();
+        let nodes_remove = nodes.clone();
+        let nodes_loop = nodes.clone();
+
         let metadata_listeners: Rc<RefCell<Vec<pipewire::metadata::MetadataListener>>> =
             Rc::new(RefCell::new(Vec::new()));
-        let metadata_listeners_cb = metadata_listeners.clone();
+        let metadata_listeners_global = metadata_listeners.clone();
 
         let registry_clone = registry.clone();
         let _registry_listener = registry
@@ -144,62 +141,54 @@ impl Client {
                             return;
                         };
 
-                        let updated_copy_inner = updated_copy.clone();
-                        let nodes_cb_inner = nodes_cb.clone();
-                        let name_inner = name.clone();
-                        let description_inner = description.clone();
+                        // Capture only what's needed for the callback - no Rc clones
+                        let callback_name = name.clone();
+                        let callback_desc = description.clone();
 
-                        let listener: pipewire::node::NodeListener =
-                            node.add_listener_local()
-                                .param(move |_, id, _, _, param| {
-                                    if id != ParamType::Props {
-                                        return;
-                                    }
-                                    let Some(param) = param else {
-                                        return;
-                                    };
-                                    if let Some((volumes, mute)) = parse_props(param) {
-                                        let avg = volume_avg(&volumes);
-                                        let mut devices = DEVICES.lock().unwrap();
-                                        devices
-                                            .entry(global_id)
-                                            .and_modify(|info| {
-                                                info.volume_avg = avg;
-                                                info.mute = mute;
-                                                info.channel_volumes = volumes.clone();
-                                            })
-                                            .or_insert_with(|| VolInfo {
-                                                id: global_id,
-                                                kind,
-                                                name: name_inner.clone(),
-                                                description: description_inner.clone(),
-                                                volume_avg: avg,
-                                                mute,
-                                                channel_volumes: volumes.clone(),
-                                            });
-                                    }
-                                    nodes_cb_inner.borrow_mut().entry(global_id).and_modify(
-                                        |info| {
-                                            info.name = name_inner.clone();
-                                            info.description = description_inner.clone();
-                                            info.kind = kind;
-                                        },
-                                    );
-                                    updated_copy_inner.set(true);
-                                })
-                                .register();
+                        let listener: pipewire::node::NodeListener = node
+                            .add_listener_local()
+                            .param(move |_, id, _, _, param| {
+                                if id != ParamType::Props {
+                                    return;
+                                }
+                                let Some(param) = param else {
+                                    return;
+                                };
+                                if let Some((volumes, mute)) = parse_props(param) {
+                                    let avg = volume_avg(&volumes);
+                                    let mut devices = DEVICES.lock().unwrap();
+                                    devices
+                                        .entry(global_id)
+                                        .and_modify(|info| {
+                                            info.volume_avg = avg;
+                                            info.mute = mute;
+                                            info.channel_volumes = volumes.clone();
+                                            info.name.clone_from(&callback_name);
+                                            info.description.clone_from(&callback_desc);
+                                        })
+                                        .or_insert_with(|| VolInfo {
+                                            id: global_id,
+                                            kind,
+                                            name: callback_name.clone(),
+                                            description: callback_desc.clone(),
+                                            volume_avg: avg,
+                                            mute,
+                                            channel_volumes: volumes,
+                                        });
+
+                                    Client::send_update_event();
+                                }
+                            })
+                            .register();
 
                         node.subscribe_params(&[ParamType::Props]);
                         node.enum_params(0, Some(ParamType::Props), 0, u32::MAX);
 
-                        nodes_cb.borrow_mut().insert(
+                        nodes_global.borrow_mut().insert(
                             global_id,
                             NodeHandle {
                                 node,
                                 _node_listener: listener,
-                                kind,
-                                name: name.clone(),
-                                description: description.clone(),
                             },
                         );
 
@@ -213,7 +202,7 @@ impl Client {
                             channel_volumes: Vec::new(),
                         });
 
-                        updated_copy.set(true);
+                        Client::send_update_event();
                     }
                     ObjectType::Metadata => {
                         let Some(meta_name) = global_props.get("metadata.name") else {
@@ -229,69 +218,75 @@ impl Client {
                             return;
                         };
 
-                        let updated_copy = updated_copy.clone();
-                        let metadata_listeners_cb = metadata_listeners_cb.clone();
                         let _listener: pipewire::metadata::MetadataListener = metadata
                             .add_listener_local()
-                            .property(move |subject, key, _, value| {
+                            .property(|subject, key, _, value| {
                                 if subject != 0 {
                                     return 0;
                                 }
-                                let Some(value) = value else {
-                                    return 0;
-                                };
+
+                                let Some(value) = value else { return 0 };
                                 let name = parse_default_name(value);
+
                                 let mut defaults = DEFAULTS.lock().unwrap();
                                 match key {
-                                    Some("default.audio.sink") => defaults.sink = Some(name),
-                                    Some("default.audio.source") => defaults.source = Some(name),
-                                    _ => (),
+                                    Some("default.audio.sink") => {
+                                        defaults.sink = Some(name);
+                                    }
+                                    Some("default.audio.source") => {
+                                        defaults.source = Some(name);
+                                    }
+                                    _ => {}
                                 }
-                                updated_copy.set(true);
+
+                                Client::send_update_event();
                                 0
                             })
                             .register();
 
-                        metadata_listeners_cb.borrow_mut().push(_listener);
+                        metadata_listeners_global.borrow_mut().push(_listener);
                     }
-                    _ => (),
+                    _ => {}
                 }
             })
-            .global_remove(move |uid| {
-                let mut devices = DEVICES.lock().unwrap();
-                if devices.remove(&uid).is_some() {
-                    updated_copy2.set(true);
-                }
+            .global_remove(move |id| {
+                DEVICES.lock().unwrap().remove(&id);
+                nodes_remove.borrow_mut().remove(&id);
+                Client::send_update_event();
             })
             .register();
 
         loop {
             main_loop.loop_().iterate(Duration::from_millis(200));
 
-            while let Ok(req) = recv_req.try_recv() {
-                match req {
-                    ClientRequest::SetVolume { id, volumes, mute } => {
-                        if let Some(handle) = nodes.borrow().get(&id)
-                            && let Ok(bytes) = build_props_bytes(&volumes, mute)
-                            && let Some(pod) = pipewire::spa::pod::Pod::from_bytes(&bytes)
-                        {
-                            handle.node.set_param(ParamType::Props, 0, pod);
-                        }
-                    }
-                    ClientRequest::SetMute { id, mute } => {
-                        if let Some(handle) = nodes.borrow().get(&id)
-                            && let Ok(bytes) = build_props_bytes(&[], Some(mute))
-                            && let Some(pod) = pipewire::spa::pod::Pod::from_bytes(&bytes)
-                        {
-                            handle.node.set_param(ParamType::Props, 0, pod);
-                        }
-                    }
-                }
-            }
+            while let Ok(request) = recv_req.try_recv() {
+                let id = match &request {
+                    ClientRequest::SetVolume { id, .. } | ClientRequest::SetMute { id, .. } => *id,
+                };
 
-            if updated.get() {
-                updated.set(false);
-                Client::send_update_event();
+                let nodes_borrow = nodes_loop.borrow();
+                let Some(node_handle) = nodes_borrow.get(&id) else {
+                    continue;
+                };
+
+                let bytes = match request {
+                    ClientRequest::SetVolume { volumes, mute, .. } => {
+                        match build_props_bytes(&volumes, mute) {
+                            Ok(bytes) => bytes,
+                            Err(_) => continue,
+                        }
+                    }
+                    ClientRequest::SetMute { mute, .. } => {
+                        match build_props_bytes(&[], Some(mute)) {
+                            Ok(bytes) => bytes,
+                            Err(_) => continue,
+                        }
+                    }
+                };
+
+                if let Some(pod) = pipewire::spa::pod::Pod::from_bytes(&bytes) {
+                    node_handle.node.set_param(ParamType::Props, 0, pod);
+                }
             }
         }
     }
@@ -343,7 +338,7 @@ fn parse_props(param: &pipewire::spa::pod::Pod) -> Option<(Vec<f32>, bool)> {
                     mute = Some(val);
                 }
             }
-            _ => (),
+            _ => {}
         }
     }
 
@@ -390,11 +385,8 @@ fn build_props_bytes(volumes: &[f32], mute: Option<bool>) -> Result<Vec<u8>> {
 pub(super) struct Device {
     target: DeviceTarget,
     device_kind: DeviceKind,
-    volume_avg: u32,
-    muted: bool,
-    output_name: String,
-    output_description: Option<String>,
-    channel_volumes: Vec<f32>,
+    // Cache resolved info to avoid repeated lookups
+    cached_info: Option<VolInfo>,
     notify: Arc<Notify>,
 }
 
@@ -429,11 +421,7 @@ impl Device {
         Ok(Device {
             target: DeviceTarget::from_name(name),
             device_kind,
-            volume_avg: 0,
-            muted: false,
-            output_name: String::new(),
-            output_description: None,
-            channel_volumes: Vec::new(),
+            cached_info: None,
             notify,
         })
     }
@@ -468,28 +456,28 @@ impl Device {
             }
         }
     }
-
-    fn resolve_id(&self) -> Option<u32> {
-        self.resolve_info().map(|info| info.id)
-    }
 }
 
 #[async_trait::async_trait]
 impl SoundDevice for Device {
     fn volume(&self) -> u32 {
-        self.volume_avg
+        self.cached_info.as_ref().map_or(0, |info| info.volume_avg)
     }
 
     fn muted(&self) -> bool {
-        self.muted
+        self.cached_info.as_ref().is_some_and(|info| info.mute)
     }
 
     fn output_name(&self) -> String {
-        self.output_name.clone()
+        self.cached_info
+            .as_ref()
+            .map_or_else(String::new, |info| info.name.clone())
     }
 
     fn output_description(&self) -> Option<String> {
-        self.output_description.clone()
+        self.cached_info
+            .as_ref()
+            .and_then(|info| info.description.clone())
     }
 
     fn active_port(&self) -> Option<String> {
@@ -526,29 +514,26 @@ impl SoundDevice for Device {
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         };
 
-        self.volume_avg = info.volume_avg;
-        self.muted = info.mute;
-        self.output_name = info.name;
-        self.output_description = info.description;
-        self.channel_volumes = info.channel_volumes;
-
+        // Cache the info to avoid repeated clones
+        self.cached_info = Some(info);
         Ok(())
     }
 
     async fn set_volume(&mut self, step: i32, max_vol: Option<u32>) -> Result<()> {
-        let id = self.resolve_id().error("PipeWire device not found")?;
+        let info = self.cached_info.as_ref().error("Device info not loaded")?;
+        let id = info.id;
 
-        let new_vol = (self.volume_avg as i32 + step).max(0) as u32;
+        let new_vol = (info.volume_avg as i32 + step).max(0) as u32;
         let capped = if let Some(max_vol) = max_vol {
             new_vol.min(max_vol)
         } else {
             new_vol
         };
 
-        let channel_count = if self.channel_volumes.is_empty() {
+        let channel_count = if info.channel_volumes.is_empty() {
             2
         } else {
-            self.channel_volumes.len()
+            info.channel_volumes.len()
         };
 
         // Convert cubic percentage back to linear for PipeWire
@@ -557,8 +542,11 @@ impl SoundDevice for Device {
 
         let new_volumes = vec![linear_vol; channel_count];
 
-        self.volume_avg = capped;
-        self.channel_volumes = new_volumes.clone();
+        // Update cached info
+        if let Some(cached) = &mut self.cached_info {
+            cached.volume_avg = capped;
+            cached.channel_volumes = new_volumes.clone();
+        }
 
         Client::send(ClientRequest::SetVolume {
             id,
@@ -570,12 +558,18 @@ impl SoundDevice for Device {
     }
 
     async fn toggle(&mut self) -> Result<()> {
-        let id = self.resolve_id().error("PipeWire device not found")?;
-        self.muted = !self.muted;
+        let info = self.cached_info.as_ref().error("Device info not loaded")?;
+        let id = info.id;
+        let new_muted = !info.mute;
+
+        // Update cached info
+        if let Some(cached) = &mut self.cached_info {
+            cached.mute = new_muted;
+        }
 
         Client::send(ClientRequest::SetMute {
             id,
-            mute: self.muted,
+            mute: new_muted,
         })?;
 
         Ok(())
