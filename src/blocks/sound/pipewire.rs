@@ -43,7 +43,7 @@ struct VolInfo {
 
 struct NodeHandle {
     node: pipewire::node::Node,
-    _listener: pipewire::node::NodeListener,
+    _node_listener: pipewire::node::NodeListener,
     kind: DeviceKind,
     name: String,
     description: Option<String>,
@@ -115,9 +115,7 @@ impl Client {
             Rc::new(RefCell::new(Vec::new()));
         let metadata_listeners_cb = metadata_listeners.clone();
 
-        // Clone registry for use inside the closure
         let registry_clone = registry.clone();
-
         let _registry_listener = registry
             .add_listener_local()
             .global(move |global| {
@@ -133,9 +131,7 @@ impl Client {
                             _ => return,
                         };
 
-                        // Capture global.id early to avoid lifetime issues
                         let global_id = global.id;
-
                         let name = global_props
                             .get(&keys::NODE_NAME)
                             .map_or_else(|| format!("node_{}", global_id), |s| s.to_string());
@@ -148,7 +144,6 @@ impl Client {
                             return;
                         };
 
-                        // Clone values for use in the closure
                         let updated_copy_inner = updated_copy.clone();
                         let nodes_cb_inner = nodes_cb.clone();
                         let name_inner = name.clone();
@@ -201,7 +196,7 @@ impl Client {
                             global_id,
                             NodeHandle {
                                 node,
-                                _listener: listener,
+                                _node_listener: listener,
                                 kind,
                                 name: name.clone(),
                                 description: description.clone(),
@@ -380,8 +375,6 @@ fn build_props_bytes(volumes: &[f32], mute: Option<bool>) -> Result<Vec<u8>> {
         });
     }
 
-    // In pipewire 0.8, we build the object value directly
-    // SPA_TYPE_OBJECT_Props is the correct type for Props objects
     let value = Value::Object(Object {
         type_: sys::SPA_TYPE_OBJECT_Props,
         id: sys::SPA_PARAM_Props,
@@ -426,7 +419,6 @@ impl DeviceTarget {
 
 impl Device {
     pub(super) fn new(device_kind: DeviceKind, name: Option<String>) -> Result<Self> {
-        // Check if PipeWire client is available
         CLIENT
             .as_ref()
             .map_err(|e| Error::new(format!("PipeWire not available: {e}")))?;
