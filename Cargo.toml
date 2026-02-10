@@ -16,7 +16,7 @@ members = [".", "xtask"]
 resolver = "3"
 
 [features]
-default = ["pulseaudio"]
+default = ["pipewire"]
 pulseaudio = ["libpulse-binding"]
 pipewire = ["dep:pipewire"]
 notmuch = ["dep:notmuch"]

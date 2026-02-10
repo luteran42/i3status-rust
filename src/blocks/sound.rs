@@ -1,8 +1,8 @@
 //! Volume level
 //!
-//! This block displays the volume level (according to PulseAudio or ALSA). Right click to toggle mute, scroll to adjust volume.
+//! This block displays the volume level (according to PipeWire, PulseAudio, or ALSA). Right click to toggle mute, scroll to adjust volume.
 //!
-//! Requires a PulseAudio installation or `alsa-utils` for ALSA.
+//! Requires PipeWire, a PulseAudio installation, or `alsa-utils` for ALSA.
 //!
 //! Note that if you are using PulseAudio commands (such as `pactl`) to control your volume, you should select the `"pulseaudio"` (or `"auto"`) driver to see volume changes that exceed 100%.
 //!
@@ -10,10 +10,10 @@
 //!
 //! Key | Values | Default
 //! ----|--------|--------
-//! `driver` | `"auto"`, `"pulseaudio"`, `"alsa"`. | `"auto"` (Pulseaudio with ALSA fallback)
+//! `driver` | `"auto"`, `"pipewire"`, `"pulseaudio"`, `"alsa"`. | `"auto"` (PipeWire/Pulseaudio with ALSA fallback)
 //! `format` | A string to customise the output of this block. See below for available placeholders. | <code>\" $icon {$volume.eng(w:2) \|}\"</code>
 //! `format_alt` | If set, block will switch between `format` and `format_alt` on every click. | `None`
-//! `name` | PulseAudio device name, or the ALSA control name as found in the output of `amixer -D yourdevice scontrols`. | PulseAudio: `@DEFAULT_SINK@` / ALSA: `Master`
+//! `name` | PulseAudio device name, PipeWire node ID (number), or the ALSA control name as found in the output of `amixer -D yourdevice scontrols`. | PulseAudio: `@DEFAULT_SINK@` / PipeWire: default device / ALSA: `Master`
 //! `device` | ALSA device name, usually in the form "hw:X" or "hw:X,Y" where `X` is the card number and `Y` is the device number as found in the output of `aplay -l`. | `default`
 //! `device_kind` | PulseAudio device kind: `source` or `sink`. | `"sink"`
 //! `natural_mapping` | When using the ALSA driver, display the "mapped volume" as given by `alsamixer`/`amixer -M`, which represents the volume level more naturally with respect for the human ear. | `false`
@@ -95,6 +95,8 @@
 mod alsa;
 #[cfg(feature = "pulseaudio")]
 mod pulseaudio;
+#[cfg(feature = "pipewire")]
+mod pipewire;
 
 use super::prelude::*;
 use crate::wrappers::SerdeRegex;
@@ -193,9 +195,19 @@ pub async fn run(config: &Config, api: &CommonApi) -> Result<()> {
             config.device_kind,
             config.name.clone(),
         )?),
+        #[cfg(feature = "pipewire")]
+        SoundDriver::PipeWire => Box::new(pipewire::Device::new(
+            config.device_kind,
+            config.name.clone(),
+        )?),
         #[cfg(feature = "pulseaudio")]
         SoundDriver::Auto => {
-            if let Ok(pulse) = pulseaudio::Device::new(config.device_kind, config.name.clone()) {
+            #[cfg(feature = "pipewire")]
+            if let Ok(pipewire) = pipewire::Device::new(config.device_kind, config.name.clone()) {
+                Box::new(pipewire)
+            } else if let Ok(pulse) =
+                pulseaudio::Device::new(config.device_kind, config.name.clone())
+            {
                 Box::new(pulse)
             } else {
                 Box::new(alsa::Device::new(
@@ -205,7 +217,19 @@ pub async fn run(config: &Config, api: &CommonApi) -> Result<()> {
                 )?)
             }
         }
-        #[cfg(not(feature = "pulseaudio"))]
+        #[cfg(all(feature = "pipewire", not(feature = "pulseaudio")))]
+        SoundDriver::Auto => {
+            if let Ok(pipewire) = pipewire::Device::new(config.device_kind, config.name.clone()) {
+                Box::new(pipewire)
+            } else {
+                Box::new(alsa::Device::new(
+                    config.name.clone().unwrap_or_else(|| "Master".into()),
+                    config.device.clone().unwrap_or_else(|| "default".into()),
+                    config.natural_mapping,
+                )?)
+            }
+        }
+        #[cfg(all(not(feature = "pulseaudio"), not(feature = "pipewire")))]
         SoundDriver::Auto => Box::new(alsa::Device::new(
             config.name.clone().unwrap_or_else(|| "Master".into()),
             config.device.clone().unwrap_or_else(|| "default".into()),
@@ -329,6 +353,8 @@ pub enum SoundDriver {
     #[default]
     Auto,
     Alsa,
+    #[cfg(feature = "pipewire")]
+    PipeWire,
     #[cfg(feature = "pulseaudio")]
     PulseAudio,
 }
