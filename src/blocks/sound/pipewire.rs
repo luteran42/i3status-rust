@@ -306,7 +306,7 @@ fn volume_avg(volumes: &[f32]) -> u32 {
         return 0;
     }
     let sum: f32 = volumes.iter().copied().sum();
-    // Convert linear volume to cubic (human) volume: cbrt(linear) * 100
+    // Convert linear volume to cubic (human) volume
     ((sum / volumes.len() as f32).cbrt() * 100.0).round() as u32
 }
 

@@ -93,10 +93,10 @@
 //! - `headphones`
 
 mod alsa;
-#[cfg(feature = "pulseaudio")]
-mod pulseaudio;
 #[cfg(feature = "pipewire")]
 mod pipewire;
+#[cfg(feature = "pulseaudio")]
+mod pulseaudio;
 
 use super::prelude::*;
 use crate::wrappers::SerdeRegex;
