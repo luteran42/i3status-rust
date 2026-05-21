@@ -1,7 +1,7 @@
 use std::{str::FromStr as _, time::Duration, vec};
 
-use chrono::{DateTime, Local, Utc};
-use icalendar::{Component as _, EventLike as _};
+use chrono::{DateTime, Datelike as _, Local, TimeZone as _, Timelike as _, Utc};
+use icalendar::{Component as _, EventLike as _, Tz};
 use reqwest::{
     self, ClientBuilder, Method, Url,
     header::{CONTENT_TYPE, HeaderMap, HeaderValue},
@@ -138,7 +138,7 @@ impl Client {
         let multi_status = self
             .report_request(calendar.url.clone(), 1, calendar_events_request(start, end))
             .await?;
-        parse_events(multi_status)
+        parse_events(multi_status, start, end)
     }
 
     pub async fn authorize(&mut self) -> Result<Authorize, CalendarError> {
@@ -292,7 +292,11 @@ fn parse_calendars(
     Ok(result)
 }
 
-fn parse_events(multi_status: Multistatus) -> Result<Vec<Event>, CalendarError> {
+fn parse_events(
+    multi_status: Multistatus,
+    event_search_start: DateTime<Utc>,
+    event_search_end: DateTime<Utc>,
+) -> Result<Vec<Event>, CalendarError> {
     let mut result = vec![];
     for response in multi_status.responses {
         for prop in response.valid_props() {
@@ -301,29 +305,82 @@ fn parse_events(multi_status: Multistatus) -> Result<Vec<Event>, CalendarError> 
                     icalendar::Calendar::from_str(&data).map_err(CalendarError::Parsing)?;
                 for component in calendar.components {
                     if let icalendar::CalendarComponent::Event(event) = component {
-                        let start_at = event.get_start().and_then(|d| match d {
+                        let event_start_at = event.get_start().and_then(|d| match d {
                             icalendar::DatePerhapsTime::DateTime(dt) => dt.try_into_utc(),
                             icalendar::DatePerhapsTime::Date(d) => d
                                 .and_hms_opt(0, 0, 0)
                                 .and_then(|d| d.and_local_timezone(Local).earliest())
                                 .map(|d| d.to_utc()),
                         });
-                        let end_at = event.get_end().and_then(|d| match d {
+                        let event_end_at = event.get_end().and_then(|d| match d {
                             icalendar::DatePerhapsTime::DateTime(dt) => dt.try_into_utc(),
                             icalendar::DatePerhapsTime::Date(d) => d
                                 .and_hms_opt(23, 59, 59)
                                 .and_then(|d| d.and_local_timezone(Local).earliest())
                                 .map(|d| d.to_utc()),
                         });
-                        result.push(Event {
-                            uid: event.get_uid().map(Into::into),
-                            summary: event.get_summary().map(Into::into),
-                            description: event.get_description().map(Into::into),
-                            location: event.get_location().map(Into::into),
-                            url: event.get_url().map(Into::into),
-                            start_at,
-                            end_at,
-                        });
+
+                        if let Some(s) = event_start_at
+                            && let Some(e) = event_end_at
+                        {
+                            let duration = e - s;
+                            result.extend(
+                                event
+                                    .get_recurrence()?
+                                    .after(
+                                        Tz::UTC
+                                            .with_ymd_and_hms(
+                                                event_search_start.year(),
+                                                event_search_start.month(),
+                                                event_search_start.day(),
+                                                event_search_start.hour(),
+                                                event_search_start.minute(),
+                                                event_search_start.second(),
+                                            )
+                                            .earliest()
+                                            .ok_or(CalendarError::TzConversion)?,
+                                    )
+                                    .before(
+                                        Tz::UTC
+                                            .with_ymd_and_hms(
+                                                event_search_end.year(),
+                                                event_search_end.month(),
+                                                event_search_end.day(),
+                                                event_search_end.hour(),
+                                                event_search_end.minute(),
+                                                event_search_end.second(),
+                                            )
+                                            .earliest()
+                                            .ok_or(CalendarError::TzConversion)?,
+                                    )
+                                    .all(u16::MAX)
+                                    .dates
+                                    .into_iter()
+                                    .map(|new_start| {
+                                        let new_start = new_start.to_utc();
+                                        let new_end = new_start + duration;
+                                        Event {
+                                            uid: event.get_uid().map(Into::into),
+                                            summary: event.get_summary().map(Into::into),
+                                            description: event.get_description().map(Into::into),
+                                            location: event.get_location().map(Into::into),
+                                            url: event.get_url().map(Into::into),
+                                            start_at: Some(new_start),
+                                            end_at: Some(new_end),
+                                        }
+                                    }),
+                            );
+                        } else {
+                            result.push(Event {
+                                uid: event.get_uid().map(Into::into),
+                                summary: event.get_summary().map(Into::into),
+                                description: event.get_description().map(Into::into),
+                                location: event.get_location().map(Into::into),
+                                url: event.get_url().map(Into::into),
+                                start_at: event_start_at,
+                                end_at: event_end_at,
+                            });
+                        }
                     }
                 }
             }

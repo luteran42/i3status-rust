@@ -1,11 +1,16 @@
 //! Pending updates for different package manager like apt, pacman, etc.
 //!
-//! Currently these package managers are available:
-//! - `apt` for Debian/Ubuntu based system
-//! - `pacman` for Arch based system
-//! - `aur` for Arch based system
-//! - `dnf` for Fedora based system
+//! Currently, these package managers are supported:
+//! - `apk` for Alpine Linux
+//! - `apt` for Debian/Ubuntu-based systems
+//! - `aur` for Arch-based systems
+//! - `brew` for the Homebrew Package Manager
+//! - `dnf` for Fedora-based systems
+//! - `flatpak` for Flatpak packages
+//! - `pacman` for Arch-based systems
+//! - `snap` for Snap packages
 //! - `xbps` for Void Linux
+//! - `zypper` for openSUSE
 //!
 //! # Configuration
 //!
@@ -19,17 +24,22 @@
 //! `warning_updates_regex` | Display block as warning if updates matching regex are available. | `None`
 //! `critical_updates_regex` | Display block as critical if updates matching regex are available. | `None`
 //! `ignore_updates_regex` | Doesn't include updates matching regex in the count. | `None`
-//! `ignore_phased_updates` | Doesn't include potentially held back phased updates in the count. (For Debian/Ubuntu based system) | `false`
-//! `aur_command` | AUR command to check available updates, which outputs in the same format as pacman. e.g. `yay -Qua` (For Arch based system) | Required if `$aur` are used
+//! `ignore_phased_updates` | Doesn't include potentially held back phased updates in the count. (For Debian/Ubuntu-based systems) | `false`
+//! `aur_command` | AUR command to check available updates, which outputs in the same format as pacman. E.g. `yay -Qua` (For Arch-based systems) | Required if `$aur` is used
 //!
 //!  Placeholder | Value                                                                            | Type   | Unit
 //! -------------|----------------------------------------------------------------------------------|--------|-----
 //! `icon`       | A static icon                                                                    | Icon   | -
-//! `apt`        | Number of updates available in Debian/Ubuntu based system                        | Number | -
-//! `pacman`     | Number of updates available in Arch based system                                 | Number | -
-//! `aur`        | Number of updates available in Arch based system                                 | Number | -
-//! `dnf`        | Number of updates available in Fedora based system                               | Number | -
+//! `apk`        | Number of updates available in Alpine Linux                                      | Number | -
+//! `apt`        | Number of updates available in Debian/Ubuntu-based systems                       | Number | -
+//! `aur`        | Number of updates available in Arch-based systems                                | Number | -
+//! `brew`       | Number of updates available in the Homebrew Package Manager                      | Number | -
+//! `dnf`        | Number of updates available in Fedora-based systems                              | Number | -
+//! `flatpak`    | Number of updates available in Flatpak packages                                  | Number | -
+//! `pacman`     | Number of updates available in Arch-based systems                                | Number | -
+//! `snap`       | Number of updates available in Snap packages                                     | Number | -
 //! `xbps`       | Number of updates available in Void Linux                                        | Number | -
+//! `zypper`     | Number of updates available in openSUSE                                          | Number | -
 //! `total`      | Number of updates available in all package manager listed                        | Number | -
 //!
 //! # Apt
@@ -52,7 +62,7 @@
 //! Tip: On Arch Linux you can setup a `pacman` hook to signal i3status-rs to update after packages
 //! have been upgraded, so you won't have stale info in your pacman block.
 //!
-//! In the block configuration, set `signal = 1` (or other number if `1` is being used by some
+//! In the block configuration, set `signal = 1` (or another number if `1` is being used by some
 //! other block):
 //!
 //! ```toml
@@ -76,12 +86,32 @@
 //!
 //! # Example
 //!
-//! Apt only config
+//! Apk-only config:
+//!
+//! ```toml
+//! [[block]]
+//! block = "packages"
+//! package_manager = ["apk"]
+//! interval = 1800
+//! error_interval = 300
+//! max_retries = 5
+//! format = " $icon $apk.eng(w:1) updates available "
+//! format_singular = " $icon One update available "
+//! format_up_to_date = " $icon system up to date "
+//! [[block.click]]
+//! # shows dmenu with available updates. Any dmenu alternative should also work.
+//! button = "left"
+//! cmd = "apk --no-cache --upgradable list | dmenu -l 10"
+//! ```
+//!
+//! Apt-only config
 //!
 //! ```toml
 //! [[block]]
 //! block = "packages"
 //! interval = 1800
+//! error_interval = 300
+//! max_retries = 5
 //! package_manager = ["apt"]
 //! format = " $icon $apt updates available"
 //! format_singular = " $icon One update available "
@@ -96,13 +126,69 @@
 //! update = true
 //! ```
 //!
-//! Pacman only config:
+//! Brew-only config:
+//!
+//! ```toml
+//! [[block]]
+//! block = "packages"
+//! package_manager = ["brew"]
+//! interval = 1800
+//! error_interval = 300
+//! max_retries = 5
+//! format = " $icon $brew.eng(w:1) updates available "
+//! format_singular = " $icon One update available "
+//! format_up_to_date = " $icon system up to date "
+//! [[block.click]]
+//! # shows dmenu with available updates. Any dmenu alternative should also work.
+//! button = "left"
+//! cmd = "brew outdated | dmenu -l 10"
+//! ```
+//!
+//! Dnf-only config:
+//!
+//! ```toml
+//! [[block]]
+//! block = "packages"
+//! package_manager = ["dnf"]
+//! interval = 1800
+//! error_interval = 300
+//! max_retries = 5
+//! format = " $icon $dnf.eng(w:1) updates available "
+//! format_singular = " $icon One update available "
+//! format_up_to_date = " $icon system up to date "
+//! [[block.click]]
+//! # shows dmenu with cached available updates. Any dmenu alternative should also work.
+//! button = "left"
+//! cmd = "dnf list -q --upgrades | tail -n +2 | rofi -dmenu"
+//! ```
+//!
+//! Flatpak-only config:
+//!
+//! ```toml
+//! [[block]]
+//! block = "packages"
+//! package_manager = ["flatpak"]
+//! interval = 1800
+//! error_interval = 300
+//! max_retries = 5
+//! format = " $icon $flatpak.eng(w:1) updates available "
+//! format_singular = " $icon One update available "
+//! format_up_to_date = " $icon system up to date "
+//! [[block.click]]
+//! # shows dmenu with cached available updates. Any dmenu alternative should also work.
+//! button = "left"
+//! cmd = "flatpak remote-ls --updates --columns=ref | rofi -dmenu"
+//! ```
+//!
+//! Pacman-only config:
 //!
 //! ```toml
 //! [[block]]
 //! block = "packages"
 //! package_manager = ["pacman"]
 //! interval = 600
+//! error_interval = 300
+//! max_retries = 5
 //! format = " $icon $pacman updates available "
 //! format_singular = " $icon $pacman update available "
 //! format_up_to_date = " $icon system up to date "
@@ -124,6 +210,7 @@
 //! package_manager = ["pacman", "aur"]
 //! interval = 600
 //! error_interval = 300
+//! max_retries = 5
 //! format = " $icon $pacman + $aur = $total updates available "
 //! format_singular = " $icon $total update available "
 //! format_up_to_date = " $icon system up to date "
@@ -131,31 +218,33 @@
 //! aur_command = "yay -Qua"
 //! ```
 //!
-//!
-//! Dnf only config:
+//! Snap-only config:
 //!
 //! ```toml
 //! [[block]]
 //! block = "packages"
-//! package_manager = ["dnf"]
+//! package_manager = ["snap"]
 //! interval = 1800
-//! format = " $icon $dnf.eng(w:1) updates available "
+//! error_interval = 300
+//! max_retries = 5
+//! format = " $icon $snap.eng(w:1) updates available "
 //! format_singular = " $icon One update available "
 //! format_up_to_date = " $icon system up to date "
 //! [[block.click]]
-//! # shows dmenu with cached available updates. Any dmenu alternative should also work.
+//! # shows dmenu with available updates. Any dmenu alternative should also work.
 //! button = "left"
-//! cmd = "dnf list -q --upgrades | tail -n +2 | rofi -dmenu"
+//! cmd = "snap refresh --list | dmenu -l 10"
 //! ```
 //!
-//!
-//! Xbps only config:
+//! Xbps-only config:
 //!
 //! ```toml
 //! [[block]]
 //! block = "packages"
 //! package_manager = ["xbps"]
 //! interval = 1800
+//! error_interval = 300
+//! max_retries = 5
 //! format = " $icon $xbps.eng(w:1) updates available "
 //! format_singular = " $icon One update available "
 //! format_up_to_date = " $icon system up to date "
@@ -165,6 +254,24 @@
 //! cmd = "xbps-install -Mun | dmenu -l 10"
 //! ```
 //!
+//! Zypper-only config:
+//!
+//! ```toml
+//! [[block]]
+//! block = "packages"
+//! package_manager = ["zypper"]
+//! interval = 1800
+//! error_interval = 300
+//! max_retries = 5
+//! format = " $icon $zypper.eng(w:1) updates available "
+//! format_singular = " $icon One update available "
+//! format_up_to_date = " $icon system up to date "
+//! [[block.click]]
+//! # shows dmenu with available updates. Any dmenu alternative should also work.
+//! button = "left"
+//! cmd = "zypper -q list-updates | tail -n +3 | rofi -dmenu -window-title 'Upgradable packages:'"
+//! ```
+//!
 //! Multiple package managers config:
 //!
 //! Update the list of pending updates every thirty minutes (1800 seconds):
@@ -172,9 +279,11 @@
 //! ```toml
 //! [[block]]
 //! block = "packages"
-//! package_manager = ["apt", "pacman", "aur", "dnf", "xbps"]
+//! package_manager = ["apk", "apt", "aur", "brew", "dnf", "flatpak", "pacman", "snap", "xbps", "zypper"]
 //! interval = 1800
-//! format = " $icon $apt + $pacman + $aur + $dnf + $xbps = $total updates available "
+//! error_interval = 300
+//! max_retries = 5
+//! format = " $icon $apk + $apt + $aur + $brew + $dnf + $flatpak + $pacman + $snap + $xbps + $zypper = $total updates available "
 //! format_singular = " $icon One update available "
 //! format_up_to_date = " $icon system up to date "
 //! # If a linux update is available, but no ZFS package, it won't be possible to
@@ -189,17 +298,32 @@
 //!
 //! - `update`
 
+pub mod apk;
+use apk::Apk;
+
 pub mod apt;
 use apt::Apt;
 
-pub mod pacman;
-use pacman::{Aur, Pacman};
+pub mod brew;
+use brew::Brew;
 
 pub mod dnf;
 use dnf::Dnf;
 
+pub mod flatpak;
+use flatpak::Flatpak;
+
+pub mod pacman;
+use pacman::{Aur, Pacman};
+
 pub mod xbps;
 use xbps::Xbps;
+
+pub mod snap;
+use snap::Snap;
+
+pub mod zypper;
+use zypper::Zypper;
 
 use regex::Regex;
 
@@ -224,11 +348,52 @@ pub struct Config {
 #[derive(Deserialize, Debug, Clone, Copy, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum PackageManager {
+    Apk,
     Apt,
-    Pacman,
     Aur,
+    Brew,
     Dnf,
+    Flatpak,
+    Pacman,
+    Snap,
     Xbps,
+    Zypper,
+}
+
+impl PackageManager {
+    /// The name of the package manager, as used in format strings.
+    fn name(&self) -> &'static str {
+        match self {
+            PackageManager::Apk => "apk",
+            PackageManager::Apt => "apt",
+            PackageManager::Aur => "aur",
+            PackageManager::Brew => "brew",
+            PackageManager::Dnf => "dnf",
+            PackageManager::Flatpak => "flatpak",
+            PackageManager::Pacman => "pacman",
+            PackageManager::Snap => "snap",
+            PackageManager::Xbps => "xbps",
+            PackageManager::Zypper => "zypper",
+        }
+    }
+
+    /// Builds a backend for the package manager.
+    async fn build(&self, config: &Config) -> Result<Box<dyn Backend>> {
+        Ok(match self {
+            PackageManager::Apk => Box::new(Apk::new()),
+            PackageManager::Apt => Box::new(Apt::new(config.ignore_phased_updates).await?),
+            PackageManager::Aur => Box::new(Aur::new(
+                config.aur_command.clone().error("aur_command is not set")?,
+            )),
+            PackageManager::Brew => Box::new(Brew::new()),
+            PackageManager::Dnf => Box::new(Dnf::new()),
+            PackageManager::Flatpak => Box::new(Flatpak::new()),
+            PackageManager::Pacman => Box::new(Pacman::new().await?),
+            PackageManager::Snap => Box::new(Snap::new()),
+            PackageManager::Xbps => Box::new(Xbps::new()),
+            PackageManager::Zypper => Box::new(Zypper::new()),
+        })
+    }
 }
 
 pub async fn run(config: &Config, api: &CommonApi) -> Result<()> {
@@ -242,36 +407,31 @@ pub async fn run(config: &Config, api: &CommonApi) -> Result<()> {
         .format_up_to_date
         .with_default(" $icon $total.eng(w:1) ")?;
 
-    // If user provide package manager in any of the formats then consider that also
-    macro_rules! any_format_contains {
-        ($name:expr) => {
-            format.contains_key($name)
-                || format_singular.contains_key($name)
-                || format_up_to_date.contains_key($name)
-        };
+    // Check if the user specified a package manager in any format string, then
+    // add that package manager to the config list.
+    macro_rules! check_manager {
+        ($manager:expr) => {{
+            let name = $manager.name();
+            let in_format = format.contains_key(name)
+                || format_singular.contains_key(name)
+                || format_up_to_date.contains_key(name);
+
+            if !config.package_manager.contains(&$manager) && in_format {
+                config.package_manager.push($manager);
+            }
+        }};
     }
 
-    let apt = any_format_contains!("apt");
-    let aur = any_format_contains!("aur");
-    let pacman = any_format_contains!("pacman");
-    let dnf = any_format_contains!("dnf");
-    let xbps = any_format_contains!("xbps");
-
-    if !config.package_manager.contains(&PackageManager::Apt) && apt {
-        config.package_manager.push(PackageManager::Apt);
-    }
-    if !config.package_manager.contains(&PackageManager::Pacman) && pacman {
-        config.package_manager.push(PackageManager::Pacman);
-    }
-    if !config.package_manager.contains(&PackageManager::Aur) && aur {
-        config.package_manager.push(PackageManager::Aur);
-    }
-    if !config.package_manager.contains(&PackageManager::Dnf) && dnf {
-        config.package_manager.push(PackageManager::Dnf);
-    }
-    if !config.package_manager.contains(&PackageManager::Xbps) && xbps {
-        config.package_manager.push(PackageManager::Xbps);
-    }
+    check_manager!(PackageManager::Apk);
+    check_manager!(PackageManager::Apt);
+    check_manager!(PackageManager::Aur);
+    check_manager!(PackageManager::Brew);
+    check_manager!(PackageManager::Dnf);
+    check_manager!(PackageManager::Flatpak);
+    check_manager!(PackageManager::Pacman);
+    check_manager!(PackageManager::Snap);
+    check_manager!(PackageManager::Xbps);
+    check_manager!(PackageManager::Zypper);
 
     let warning_updates_regex = config
         .warning_updates_regex
@@ -295,15 +455,7 @@ pub async fn run(config: &Config, api: &CommonApi) -> Result<()> {
     let mut package_manager_vec: Vec<Box<dyn Backend>> = Vec::new();
 
     for &package_manager in config.package_manager.iter() {
-        package_manager_vec.push(match package_manager {
-            PackageManager::Apt => Box::new(Apt::new(config.ignore_phased_updates).await?),
-            PackageManager::Pacman => Box::new(Pacman::new().await?),
-            PackageManager::Aur => Box::new(Aur::new(
-                config.aur_command.clone().error("aur_command is not set")?,
-            )),
-            PackageManager::Dnf => Box::new(Dnf::new()),
-            PackageManager::Xbps => Box::new(Xbps::new()),
-        });
+        package_manager_vec.push(package_manager.build(&config).await?);
     }
 
     loop {

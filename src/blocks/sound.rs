@@ -10,7 +10,7 @@
 //!
 //! Key | Values | Default
 //! ----|--------|--------
-//! `driver` | `"auto"`, `"pipewire"`, `"pulseaudio"`, `"alsa"`. | `"auto"` (PipeWire/Pulseaudio with ALSA fallback)
+//! `driver` | `"auto"`, `pipewire`, `"pulseaudio"`, `"alsa"`. | `"auto"` (Pipewire with Pulseaudio fallback with ALSA fallback)
 //! `format` | A string to customise the output of this block. See below for available placeholders. | <code>\" $icon {$volume.eng(w:2) \|}\"</code>
 //! `format_alt` | If set, block will switch between `format` and `format_alt` on every click. | `None`
 //! `name` | PulseAudio device name, PipeWire node ID (number), or the ALSA control name as found in the output of `amixer -D yourdevice scontrols`. | PulseAudio: `@DEFAULT_SINK@` / PipeWire: default device / ALSA: `Master`
@@ -92,9 +92,11 @@
 //! - `volume` (as a progression)
 //! - `headphones`
 
+make_log_macro!(debug, "sound");
+
 mod alsa;
 #[cfg(feature = "pipewire")]
-mod pipewire;
+pub mod pipewire;
 #[cfg(feature = "pulseaudio")]
 mod pulseaudio;
 
@@ -102,8 +104,6 @@ use super::prelude::*;
 use crate::wrappers::SerdeRegex;
 use indexmap::IndexMap;
 use regex::Regex;
-
-make_log_macro!(debug, "sound");
 
 #[derive(Deserialize, Debug, SmartDefault)]
 #[serde(deny_unknown_fields, default)]
@@ -160,11 +160,11 @@ pub async fn run(config: &Config, api: &CommonApi) -> Result<()> {
                 Some("headset") | Some("headphone") | Some("hands-free") | Some("portable") => true,
                 // Per discussion at
                 // https://github.com/greshake/i3status-rust/pull/1363#issuecomment-1046095869,
-                // some sinks may not have the form_factor property, so we should fall back to the
-                // active_port if that property is not present.
-                None => active_port.is_some_and(|p| p.to_lowercase().contains("headphones")),
-                // form_factor is present and is some non-headphone value
-                _ => false,
+                // fall back to checking active_port if form_factor is absent, unknown, or doesn't match
+                // known headphone values (common on PipeWire/WirePlumber systems).
+                _ => active_port
+                    .as_ref()
+                    .is_some_and(|p| p.to_lowercase().contains("headphone")),
             };
             if headphones {
                 return "headphones";
@@ -190,51 +190,32 @@ pub async fn run(config: &Config, api: &CommonApi) -> Result<()> {
             config.device.clone().unwrap_or_else(|| "default".into()),
             config.natural_mapping,
         )?),
+        #[cfg(feature = "pipewire")]
+        SoundDriver::Pipewire => {
+            Box::new(pipewire::Device::new(config.device_kind, config.name.clone()).await?)
+        }
         #[cfg(feature = "pulseaudio")]
         SoundDriver::PulseAudio => Box::new(pulseaudio::Device::new(
             config.device_kind,
             config.name.clone(),
         )?),
-        #[cfg(feature = "pipewire")]
-        SoundDriver::PipeWire => Box::new(pipewire::Device::new(
-            config.device_kind,
-            config.name.clone(),
-        )?),
-        #[cfg(feature = "pulseaudio")]
-        SoundDriver::Auto => {
+        SoundDriver::Auto => 'blk: {
+            #[cfg(feature = "pulseaudio")]
+            if let Ok(pulse) = pulseaudio::Device::new(config.device_kind, config.name.clone()) {
+                break 'blk Box::new(pulse);
+            }
             #[cfg(feature = "pipewire")]
-            if let Ok(pipewire) = pipewire::Device::new(config.device_kind, config.name.clone()) {
-                Box::new(pipewire)
-            } else if let Ok(pulse) =
-                pulseaudio::Device::new(config.device_kind, config.name.clone())
+            if let Ok(pipewire) =
+                pipewire::Device::new(config.device_kind, config.name.clone()).await
             {
-                Box::new(pulse)
-            } else {
-                Box::new(alsa::Device::new(
-                    config.name.clone().unwrap_or_else(|| "Master".into()),
-                    config.device.clone().unwrap_or_else(|| "default".into()),
-                    config.natural_mapping,
-                )?)
+                break 'blk Box::new(pipewire);
             }
+            Box::new(alsa::Device::new(
+                config.name.clone().unwrap_or_else(|| "Master".into()),
+                config.device.clone().unwrap_or_else(|| "default".into()),
+                config.natural_mapping,
+            )?)
         }
-        #[cfg(all(feature = "pipewire", not(feature = "pulseaudio")))]
-        SoundDriver::Auto => {
-            if let Ok(pipewire) = pipewire::Device::new(config.device_kind, config.name.clone()) {
-                Box::new(pipewire)
-            } else {
-                Box::new(alsa::Device::new(
-                    config.name.clone().unwrap_or_else(|| "Master".into()),
-                    config.device.clone().unwrap_or_else(|| "default".into()),
-                    config.natural_mapping,
-                )?)
-            }
-        }
-        #[cfg(all(not(feature = "pulseaudio"), not(feature = "pipewire")))]
-        SoundDriver::Auto => Box::new(alsa::Device::new(
-            config.name.clone().unwrap_or_else(|| "Master".into()),
-            config.device.clone().unwrap_or_else(|| "default".into()),
-            config.natural_mapping,
-        )?),
     };
 
     let mappings = match &config.mappings {
@@ -354,7 +335,7 @@ pub enum SoundDriver {
     Auto,
     Alsa,
     #[cfg(feature = "pipewire")]
-    PipeWire,
+    Pipewire,
     #[cfg(feature = "pulseaudio")]
     PulseAudio,
 }

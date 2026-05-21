@@ -295,7 +295,7 @@ pub async fn run(config: &Config, api: &CommonApi) -> Result<()> {
     let warning_threshold = Duration::try_seconds(config.warning_threshold.into())
         .error("Invalid warning threshold configuration")?;
 
-    let mut source = Source::new(source_config.clone()).await?;
+    let mut source = Source::new(source_config.to_owned()).await?;
 
     let mut timer = config.fetch_interval.timer();
 
@@ -424,7 +424,8 @@ impl Source {
                 credentials_path,
             }) => {
                 let credentials = if let Some(path) = credentials_path {
-                    util::deserialize_toml_file(path.expand()?.to_string())
+                    util::async_deserialize_toml_file(path.expand()?.to_string())
+                        .await
                         .error("Failed to read basic credentials file")?
                 } else {
                     credentials.clone()
@@ -440,7 +441,8 @@ impl Source {
             }
             AuthConfig::OAuth2(oauth2) => {
                 let credentials = if let Some(path) = &oauth2.credentials_path {
-                    util::deserialize_toml_file(path.expand()?.to_string())
+                    util::async_deserialize_toml_file(path.expand()?.to_string())
+                        .await
                         .error("Failed to read oauth2 credentials file")?
                 } else {
                     oauth2.credentials.clone()
@@ -595,6 +597,8 @@ pub enum CalendarError {
     Http(#[from] reqwest::Error),
     #[error(transparent)]
     Deserialize(#[from] quick_xml::de::DeError),
+    #[error(transparent)]
+    RecurrenceError(#[from] icalendar::RecurrenceError),
     #[error("Parsing error: {0}")]
     Parsing(String),
     #[error("Auth required")]
@@ -607,4 +611,6 @@ pub enum CalendarError {
     RequestToken(String),
     #[error("Store token error: {0}")]
     StoreToken(#[from] TokenStoreError),
+    #[error("local time falls in a _gap_ in the local time, or if there was an error")]
+    TzConversion,
 }
