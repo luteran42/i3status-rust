@@ -274,6 +274,38 @@ pub fn country_flag_from_iso_code(country_code: &str) -> String {
     String::from_utf8(vec![0xf0, 0x9f, 0x87, b1, 0xf0, 0x9f, 0x87, b2]).unwrap()
 }
 
+#[inline]
+pub fn celsius_to_fahrenheit(c: f64) -> f64 {
+    c * (9.0 / 5.0) + 32.0
+}
+
+#[inline]
+pub fn fahrenheit_to_celsius(f: f64) -> f64 {
+    (f - 32.0) * (5.0 / 9.0)
+}
+
+#[inline]
+pub fn mps_to_kmh(mps: f64) -> f64 {
+    mps * 3.6
+}
+
+#[inline]
+pub fn kmh_to_mps(kmh: f64) -> f64 {
+    kmh / 3.6
+}
+
+const KM_PER_MILE: f64 = 1.609344;
+
+#[inline]
+pub fn kmh_to_mph(kmh: f64) -> f64 {
+    kmh / KM_PER_MILE
+}
+
+#[inline]
+pub fn mph_to_kmh(mph: f64) -> f64 {
+    mph * KM_PER_MILE
+}
+
 /// A shortcut for `Default::default()`
 /// See <https://github.com/rust-lang/rust/issues/73014>
 #[inline]

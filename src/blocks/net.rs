@@ -8,14 +8,15 @@
 //! ----|--------|--------
 //! `device` | Network interface to monitor (as specified in `/sys/class/net/`). Supports regex. | If not set, device will be automatically selected every `interval`
 //! `interval` | Update interval in seconds | `2`
-//! `format` | A string to customise the output of this block. See below for available placeholders. | `" $icon ^icon_net_down $speed_down.eng(prefix:K) ^icon_net_up $speed_up.eng(prefix:K) "`
-//! `format_alt` | If set, block will switch between `format` and `format_alt` on every click | `None`
+//! `format` | A [MultiFormat][MaybeMultiFormatConfig] string to customise the output of this block. See below for available placeholders. | `[" $icon ^icon_net_down $speed_down.eng(prefix:K) ^icon_net_up $speed_up.eng(prefix:K) "]`
 //! `inactive_format` | Same as `format` but for when the interface is inactive | `" $icon Down "`
 //! `missing_format` | Same as `format` but for when the device is missing | `" × "`
 //!
 //! Action          | Description                               | Default button
 //! ----------------|-------------------------------------------|---------------
-//! `toggle_format` | Toggles between `format` and `format_alt` | Left
+//! `toggle_format` **DEPRECATED** | Toggles between `format` and `format_alt` | -
+//! `next_format`  | Switches to the next format in the list     | Left
+//! `prev_format`  | Switches to the previous format in the list | Right
 //!
 //! Placeholder       | Value                       | Type   | Unit
 //! ------------------|-----------------------------|--------|---------------
@@ -25,7 +26,7 @@
 //! `graph_down`      | Download speed graph        | Text   | -
 //! `graph_up`        | Upload speed graph          | Text   | -
 //! `device`          | The name of device          | Text   | -
-//! `ssid`            | Netfork SSID (WiFi only)    | Text   | -
+//! `ssid`            | Network SSID (WiFi only)    | Text   | -
 //! `frequency`       | WiFi frequency              | Number | Hz
 //! `signal_strength` | WiFi signal                 | Number | %
 //! `bitrate`         | WiFi connection bitrate     | Number | Bits per second
@@ -52,12 +53,12 @@
 //! ```
 //!
 //! # Icons Used
-//! - `net_loopback`
-//! - `net_vpn`
-//! - `net_wired`
-//! - `net_wireless` (as a progression)
-//! - `net_up`
-//! - `net_down`
+//! - `net_loopback` (`$icon`)
+//! - `net_vpn` (`$icon`)
+//! - `net_wired` (`$icon`)
+//! - `net_wireless` (`$icon`, as a progression)
+//! - `net_up` (`^icon_net_up`)
+//! - `net_down` (`^icon_net_down`)
 
 use super::prelude::*;
 use crate::netlink::NetDevice;
@@ -67,30 +68,54 @@ use regex::Regex;
 use std::time::Instant;
 
 #[derive(Deserialize, Debug, SmartDefault)]
-#[serde(deny_unknown_fields, default)]
+#[serde(default)]
 pub struct Config {
     pub device: Option<String>,
     #[default(2.into())]
     pub interval: Seconds,
-    pub format: FormatConfig,
-    pub format_alt: Option<FormatConfig>,
+    #[serde(flatten)]
+    pub formats: MaybeMultiFormatConfig,
     pub inactive_format: FormatConfig,
     pub missing_format: FormatConfig,
 }
 
-pub async fn run(config: &Config, api: &CommonApi) -> Result<()> {
-    let mut actions = api.get_actions()?;
-    api.set_default_actions(&[(MouseButton::Left, None, "toggle_format")])?;
-
-    let mut format = config.format.with_default(
+pub(crate) fn prepare(config: &Config) -> Result<Arc<BlockPlan>> {
+    // Every state that renders a device sets these on every render; the
+    // wifi-only values (ssid, signal_strength, ...) and the addresses are
+    // conditional and stay undeclared.
+    let device_output =
+        |output: OutputPlan| output.icon("icon", IconChoices::fixed(NetDevice::ALL_ICONS));
+    let formats = config.formats.with_default(
         " $icon ^icon_net_down $speed_down.eng(prefix:K) ^icon_net_up $speed_up.eng(prefix:K) ",
     )?;
-    let missing_format = config.missing_format.with_default(" × ")?;
-    let inactive_format = config.inactive_format.with_default(" $icon Down ")?;
-    let mut format_alt = match &config.format_alt {
-        Some(f) => Some(f.with_default("")?),
-        None => None,
-    };
+    // One output per format the user can rotate to, plus the two states that
+    // are not format variants at all: an inactive interface and a missing
+    // device each have their own format and are selected by `run()`.
+    let mut outputs = format_outputs(formats, device_output);
+    outputs.push(device_output(OutputPlan::new(
+        "inactive",
+        config.inactive_format.with_default(" $icon Down ")?,
+    )));
+    // `missing` sets no values at all: nothing to declare.
+    outputs.push(OutputPlan::new(
+        "missing",
+        config.missing_format.with_default(" × ")?,
+    ));
+    BlockPlan::new(outputs)
+}
+
+pub(crate) async fn run(config: &Config, api: &CommonApi, plan: &Arc<BlockPlan>) -> Result<()> {
+    let mut actions = api.get_actions()?;
+    api.set_default_actions(&[
+        (MouseButton::Left, None, "next_format"),
+        (MouseButton::Right, None, "prev_format"),
+    ])?;
+
+    // The plan also holds the `inactive` and `missing` states; the rotation
+    // covers the format outputs alone.
+    let mut formats = FormatRotation::new(plan)?;
+    let output_inactive = plan.output("inactive")?;
+    let output_missing = plan.output("missing")?;
 
     let mut timer = config.interval.timer();
 
@@ -110,16 +135,15 @@ pub async fn run(config: &Config, api: &CommonApi) -> Result<()> {
     loop {
         match NetDevice::new(device_re.as_ref()).await? {
             None => {
-                api.set_widget(Widget::new().with_format(missing_format.clone()))?;
+                api.set_widget(output_missing.new_widget())?;
             }
             Some(device) => {
-                let mut widget = Widget::new();
-
-                if device.is_up() {
-                    widget.set_format(format.clone());
+                let output = if device.is_up() {
+                    formats.current()
                 } else {
-                    widget.set_format(inactive_format.clone());
-                }
+                    &output_inactive
+                };
+                let mut widget = output.new_widget();
 
                 let mut speed_down: f64 = 0.0;
                 let mut speed_up: f64 = 0.0;
@@ -180,11 +204,13 @@ pub async fn run(config: &Config, api: &CommonApi) -> Result<()> {
                 _ = timer.tick() => break,
                 _ = api.wait_for_update_request() => break,
                 Some(action) = actions.recv() => match action.as_ref() {
-                    "toggle_format" => {
-                        if let Some(format_alt) = &mut format_alt {
-                            std::mem::swap(format_alt, &mut format);
-                            break;
-                        }
+                    "next_format" | "toggle_format" => {
+                        formats.next();
+                        break;
+                    }
+                    "prev_format" => {
+                        formats.prev();
+                        break;
                     }
                     _ => ()
                 }
@@ -200,7 +226,85 @@ fn push_to_hist<T>(hist: &mut [T], elem: T) {
 
 #[cfg(test)]
 mod tests {
-    use super::push_to_hist;
+    use super::*;
+
+    #[test]
+    fn plan_declares_device_icon_set_on_every_rendering_state() {
+        let plan = prepare(&Config::default()).unwrap();
+        let ids: Vec<_> = plan.outputs().map(|o| o.id()).collect();
+        assert_eq!(ids, ["format", "inactive", "missing"]);
+
+        for id in ["format", "inactive"] {
+            let output = plan.output(id).unwrap();
+            let choices = output.output().choices_for("icon").unwrap();
+            for icon in NetDevice::ALL_ICONS {
+                assert!(choices.permits(icon), "{id} must permit {icon}");
+            }
+            assert!(!choices.permits("net_up"));
+        }
+
+        // `missing` renders a bare format and sets no values at all.
+        let missing = plan.output("missing").unwrap();
+        assert_eq!(missing.output().icon_placeholders().count(), 0);
+    }
+
+    #[test]
+    fn every_configured_format_becomes_an_output() {
+        let plan = prepare(&Config::default()).unwrap();
+        assert!(plan.output("format2").is_err());
+
+        let config: Config = toml::from_str(r#"format = [" $icon ", " $icon $device "]"#).unwrap();
+        let plan = prepare(&config).unwrap();
+        let ids: Vec<_> = plan.outputs().map(|o| o.id()).collect();
+        // The extra states stay alongside the per-format outputs.
+        assert_eq!(ids, ["format", "format2", "inactive", "missing"]);
+
+        let second = plan.output("format2").unwrap();
+        assert!(second.format().contains_key("device"));
+        let choices = second.output().choices_for("icon").unwrap();
+        assert!(choices.permits("net_wireless"));
+    }
+
+    #[test]
+    fn the_arrows_in_the_default_format_are_part_of_the_icon_surface() {
+        // They are `^icon_*` tokens rather than icon values, so they are not
+        // declared placeholders — but the block still draws them.
+        let plan = prepare(&Config::default()).unwrap();
+        let format = plan.output("format").unwrap();
+        assert_eq!(
+            format.output().static_icons(),
+            ["net_down", "net_up"],
+            "the default format's arrows must be visible to an inspector"
+        );
+        // The states that render no format icons say so.
+        for id in ["inactive", "missing"] {
+            let output = plan.output(id).unwrap();
+            assert!(output.output().static_icons().is_empty(), "{id}");
+        }
+    }
+
+    #[test]
+    fn every_chooser_icon_is_declared() {
+        // Exercise every branch of the runtime icon chooser and check the
+        // result against the declared set, so the two cannot drift apart.
+        let mut seen = Vec::new();
+        for is_wireless in [false, true] {
+            for tun_wg_ppp in [false, true] {
+                for name in ["lo", "eth0", "tun0", "wlan0"] {
+                    let icon = NetDevice::icon_for(is_wireless, tun_wg_ppp, name);
+                    assert!(
+                        NetDevice::ALL_ICONS.contains(&icon),
+                        "chooser returned undeclared icon {icon}"
+                    );
+                    if !seen.contains(&icon) {
+                        seen.push(icon);
+                    }
+                }
+            }
+        }
+        // ...and every declared name is actually reachable.
+        assert_eq!(seen.len(), NetDevice::ALL_ICONS.len());
+    }
 
     #[test]
     fn test_push_to_hist() {
