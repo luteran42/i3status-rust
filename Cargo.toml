@@ -67,7 +67,7 @@ oauth2 = { version = "5.0.0", default-features = false, features = ["reqwest"] }
 pipewire = { version = "0.10", default-features = false, optional = true }
 quick-xml = { version = "0.37", features = ["serialize"] }
 regex = "1.5"
-reqwest = { version = "0.12", default-features = false, features = ["gzip", "rustls-tls", "http2", "json"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 sensors = "0.2.2"
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
