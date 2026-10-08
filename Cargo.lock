@@ -1647,6 +1647,7 @@ dependencies = [
  "signal-hook-tokio",
  "smart-default",
  "sunrise",
+ "swayipc",
  "swayipc-async",
  "thiserror 2.0.21",
  "tokio",
@@ -3718,6 +3719,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "swayipc"
+version = "4.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7fd6ee13016b1ae2fbf741ddb2133d983a3fecdc34686eec6202e2a80612d82f"
+dependencies = [
+ "serde",
+ "serde_json",
+ "swayipc-types",
+]
+
+[[package]]
 name = "swayipc-async"
 version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3758,6 +3770,17 @@ name = "syn"
 version = "2.0.119"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "872831b642d1a07999a962a351ed35b955ea2cfc8f3862091e2a240a84f17297"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "unicode-ident",
+]
+
+[[package]]
+name = "syn"
+version = "3.0.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8593e8e72159ed2257d083c7a454a85cbf854f37a0966d8d483aff8c8a3ebcee"
 dependencies = [
  "proc-macro2",
  "quote",
