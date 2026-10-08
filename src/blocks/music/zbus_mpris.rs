@@ -29,6 +29,14 @@ pub struct PlayerMetadata {
     pub url: Option<String>,
 }
 
+impl PlayerMetadata {
+    pub fn is_empty(&self) -> bool {
+        self.title.as_ref().is_none_or(|s| s.trim().is_empty())
+            && self.artist.as_ref().is_none_or(|s| s.trim().is_empty())
+            && self.url.as_ref().is_none_or(|s| s.trim().is_empty())
+    }
+}
+
 impl TryFrom<OwnedValue> for PlayerMetadata {
     type Error = <HashMap<String, OwnedValue> as TryFrom<OwnedValue>>::Error;
 
@@ -38,6 +46,7 @@ impl TryFrom<OwnedValue> for PlayerMetadata {
         let val_to_string = |val: &Value| {
             val.downcast_ref::<&str>()
                 .ok()
+                .map(str::trim)
                 .and_then(|val| (!val.is_empty()).then(|| val.to_string()))
         };
 

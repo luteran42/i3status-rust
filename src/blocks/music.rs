@@ -255,25 +255,43 @@ pub(crate) async fn run(config: &Config, api: &CommonApi, plan: &Arc<BlockPlan>)
     let mut cur_player = None;
     if let Ok(playerctld_players) = playerctld_proxy.player_names().await {
         // If we can get the list of players from playerctld then we should
-        // take the first matching player (this is the most recently active player)
-        for playerctld_player in playerctld_players {
+        // take the first matching player with metadata (or fall back to first matching player)
+        for playerctld_player in &playerctld_players {
             if let Some(pos) = players
                 .iter()
                 .position(|p| p.bus_name.as_str() == playerctld_player)
+                && players[pos].has_metadata()
             {
                 cur_player = Some(pos);
                 break;
             }
         }
+        if cur_player.is_none() {
+            for playerctld_player in playerctld_players {
+                if let Some(pos) = players
+                    .iter()
+                    .position(|p| p.bus_name.as_str() == playerctld_player)
+                {
+                    cur_player = Some(pos);
+                    break;
+                }
+            }
+        }
     } else {
-        // If we couldn't get the players from playerctld then fall back to walking over
-        // the players and select the first one found playing something, or the last one
-        // in the list (the most recently opened)
+        // If we couldn't get the players from playerctld then select the first one
+        // found playing something with metadata, or the first one with metadata,
+        // or fall back to the last player.
         for (i, player) in players.iter().enumerate() {
-            cur_player = Some(i);
-            if player.status == Some(PlaybackStatus::Playing) {
+            if player.status == Some(PlaybackStatus::Playing) && player.has_metadata() {
+                cur_player = Some(i);
                 break;
             }
+            if player.has_metadata() && cur_player.is_none() {
+                cur_player = Some(i);
+            }
+        }
+        if cur_player.is_none() && !players.is_empty() {
+            cur_player = Some(players.len() - 1);
         }
     }
 
@@ -310,10 +328,31 @@ pub(crate) async fn run(config: &Config, api: &CommonApi, plan: &Arc<BlockPlan>)
         .await
         .error("Failed to create ActivePlayerChangeEndStream")?;
 
+    let mut consecutive_shifts = 0;
+
     loop {
         debug!("available players: {}", DisplaySlice(&players));
 
-        let avail = players.len();
+        let players_with_meta: Vec<usize> = players
+            .iter()
+            .enumerate()
+            .filter_map(|(i, p)| p.has_metadata().then_some(i))
+            .collect();
+        let avail = if players_with_meta.is_empty() {
+            players.len()
+        } else {
+            players_with_meta.len()
+        };
+        let cur = cur_player.map_or(0, |c| {
+            if players_with_meta.is_empty() {
+                c + 1
+            } else {
+                players_with_meta
+                    .iter()
+                    .position(|&p| p == c)
+                    .map_or(1, |idx| idx + 1)
+            }
+        });
         let output = formats.current();
         let player = cur_player.map(|c| players.get_mut(c).unwrap());
         match player {
@@ -324,7 +363,7 @@ pub(crate) async fn run(config: &Config, api: &CommonApi, plan: &Arc<BlockPlan>)
                     "prev" => Value::icon(icons::MUSIC_PREV).with_instance(PREV_BTN),
                 };
                 values.insert("avail".into(), Value::number(avail));
-                values.insert("cur".into(), Value::number(cur_player.unwrap() + 1));
+                values.insert("cur".into(), Value::number(cur));
                 values.insert(
                     "player".into(),
                     Value::text(
@@ -417,13 +456,13 @@ pub(crate) async fn run(config: &Config, api: &CommonApi, plan: &Arc<BlockPlan>)
                         if let Some(volume) = props.get("Volume") {
                             player.volume = Some(*volume.downcast_ref::<&f64>().unwrap());
                         }
-                        if player.status == Some(PlaybackStatus::Playing)
-                        && (
-                            player.metadata.title.is_some()
-                            || player.metadata.artist.is_some()
-                            || player.metadata.url.is_some()
-                        ) {
+                        if player.status == Some(PlaybackStatus::Playing) && player.has_metadata() {
                             cur_player = Some(pos);
+                        } else if cur_player == Some(pos)
+                            && !player.has_metadata()
+                            && let Some(other) = players.iter().position(|p| p.has_metadata())
+                        {
+                            cur_player = Some(other);
                         }
                         break;
                     }
@@ -452,7 +491,10 @@ pub(crate) async fn run(config: &Config, api: &CommonApi, plan: &Arc<BlockPlan>)
                                     if players.is_empty() {
                                         cur_player = None;
                                     } else if pos == cur {
-                                        cur_player = Some(0);
+                                        cur_player = players
+                                            .iter()
+                                            .position(|p| p.has_metadata())
+                                            .or(Some(0));
                                     } else if pos < cur {
                                         cur_player = Some(cur - 1);
                                     }
@@ -465,14 +507,32 @@ pub(crate) async fn run(config: &Config, api: &CommonApi, plan: &Arc<BlockPlan>)
                 }
                 Some(msg) = active_player_change_end_stream.next() => {
                     let args = msg.args().unwrap();
-                    if let Some(pos) = players.iter().position(|p| p.bus_name == args.name){
-                        cur_player = Some(pos);
-                    }
-                    else{
+                    if let Some(pos) = players.iter().position(|p| p.bus_name == args.name) {
+                        if players[pos].has_metadata() || !players.iter().any(|p| p.has_metadata()) {
+                            cur_player = Some(pos);
+                            consecutive_shifts = 0;
+                        } else {
+                            // Player has no metadata while other players have metadata; shift again
+                            consecutive_shifts += 1;
+                            if consecutive_shifts < players.len() {
+                                if let Err(e) = playerctld_proxy.shift().await {
+                                    debug!("{e}");
+                                }
+                            } else {
+                                cur_player = Some(pos);
+                                consecutive_shifts = 0;
+                            }
+                        }
+                    } else {
                         // We must have shifted to a player we wanted to skip (on the interface_name_exclude list).
                         // Let's shift again
-                        if let Err(e) = playerctld_proxy.shift().await{
-                            debug!("{e}");
+                        consecutive_shifts += 1;
+                        if consecutive_shifts < players.len() {
+                            if let Err(e) = playerctld_proxy.shift().await {
+                                debug!("{e}");
+                            }
+                        } else {
+                            consecutive_shifts = 0;
                         }
                     }
                     break;
@@ -491,8 +551,13 @@ pub(crate) async fn run(config: &Config, api: &CommonApi, plan: &Arc<BlockPlan>)
                                 player.prev().await?;
                             }
                             "next_player" => {
-                                cur_player = Some((i + 1) % players.len());
-                                if let Err(e) = playerctld_proxy.shift().await{
+                                if let Some(next) = next_player_index(i, &players) {
+                                    cur_player = Some(next);
+                                }
+                                if (players.iter().filter(|p| p.has_metadata()).count() > 1
+                                    || !players.iter().any(|p| p.has_metadata()))
+                                    && let Err(e) = playerctld_proxy.shift().await
+                                {
                                     debug!("{e}");
                                 }
                                 break;
@@ -563,7 +628,32 @@ struct Player {
     volume: Option<f64>,
 }
 
+trait PlayerWithMetadata {
+    fn has_metadata(&self) -> bool;
+}
+
+impl PlayerWithMetadata for Player {
+    fn has_metadata(&self) -> bool {
+        !self.metadata.is_empty()
+    }
+}
+
+fn next_player_index<P: PlayerWithMetadata>(current: usize, players: &[P]) -> Option<usize> {
+    if players.is_empty() {
+        return None;
+    }
+    let has_meta_players = players.iter().any(|p| p.has_metadata());
+    if has_meta_players {
+        (1..players.len())
+            .map(|offset| (current + offset) % players.len())
+            .find(|&idx| players[idx].has_metadata())
+    } else {
+        Some((current + 1) % players.len())
+    }
+}
+
 impl Player {
+
     async fn new(
         dbus_conn: &zbus::Connection,
         bus_name: OwnedBusName,
@@ -761,5 +851,60 @@ mod tests {
                 .unwrap()
                 .permits("music_pause")
         );
+    }
+
+    struct DummyPlayer(bool);
+
+    impl PlayerWithMetadata for DummyPlayer {
+        fn has_metadata(&self) -> bool {
+            self.0
+        }
+    }
+
+    #[test]
+    fn next_player_index_skips_empty_players() {
+        // Empty players list
+        assert_eq!(next_player_index::<DummyPlayer>(0, &[]), None);
+
+        // Only 1 player with metadata, 1 empty player: should stay on the player with metadata
+        let players = [DummyPlayer(true), DummyPlayer(false)];
+        assert_eq!(next_player_index(0, &players), None);
+        // If somehow starting on the empty player, should cycle to the one with metadata
+        assert_eq!(next_player_index(1, &players), Some(0));
+
+        // 2 players with metadata and 1 empty player in between: should cycle between the two
+        let players = [DummyPlayer(true), DummyPlayer(false), DummyPlayer(true)];
+        assert_eq!(next_player_index(0, &players), Some(2));
+        assert_eq!(next_player_index(2, &players), Some(0));
+        assert_eq!(next_player_index(1, &players), Some(2));
+
+        // All players empty: normal cycling
+        let players = [DummyPlayer(false), DummyPlayer(false)];
+        assert_eq!(next_player_index(0, &players), Some(1));
+        assert_eq!(next_player_index(1, &players), Some(0));
+    }
+
+    #[test]
+    fn player_metadata_is_empty_test() {
+        let empty_meta = zbus_mpris::PlayerMetadata {
+            title: None,
+            artist: None,
+            url: None,
+        };
+        assert!(empty_meta.is_empty());
+
+        let whitespace_meta = zbus_mpris::PlayerMetadata {
+            title: Some("   ".into()),
+            artist: None,
+            url: None,
+        };
+        assert!(whitespace_meta.is_empty());
+
+        let valid_meta = zbus_mpris::PlayerMetadata {
+            title: Some("Title".into()),
+            artist: None,
+            url: None,
+        };
+        assert!(!valid_meta.is_empty());
     }
 }
